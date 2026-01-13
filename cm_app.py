@@ -1,124 +1,129 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from datetime import date, timedelta
 
-# --- 1. 網頁設定 ---
-st.set_page_config(page_title="建管流程時間軸", page_icon="📅", layout="wide")
+# --- 1. 基礎設定 ---
+st.set_page_config(page_title="建管流程標準化系統", page_icon="🏗️", layout="wide")
 
-st.title("📅 建管作業流程時間軸 (Gantt Chart)")
-st.markdown("請在下方表格**新增事項**與**日期**，系統將自動生成時間軸圖表。")
+st.title("🏗️ 各縣市建管流程標準化系統")
+st.markdown("請選擇案件所在地區，系統將自動載入標準流程樣板供您追蹤。")
 
-# --- 2. 定義資料結構 (一開始是空白的) ---
-# 我們定義好欄位名稱，但裡面不放資料
-if "tasks_df" not in st.session_state:
-    st.session_state.tasks_df = pd.DataFrame(
-        columns=["事項名稱", "開始日期", "結束日期", "作業階段", "進度(%)"]
-    )
-
-# --- 3. 資料輸入區 (可編輯表格) ---
-with st.expander("📝 編輯流程與日期 (點擊展開/收合)", expanded=True):
-    st.caption("💡 操作提示：點擊下方表格的最後一列 `+` 號可新增項目。日期請點兩下選擇。")
+# --- 2. 定義標準樣板資料庫 (SOP) ---
+# 這裡就是您的「知識庫」，您可以依據公司經驗隨時修改這裡的內容
+def get_template_data(city):
     
-    # 設定欄位的格式 (Config)
-    column_config = {
-        "事項名稱": st.column_config.TextColumn(
-            "作業項目", 
-            help="例如：建照掛號、環保局空污費繳納...",
-            required=True
-        ),
-        "開始日期": st.column_config.DateColumn(
-            "開始日期",
-            format="YYYY-MM-DD",
-            required=True
-        ),
-        "結束日期": st.column_config.DateColumn(
-            "結束日期",
-            format="YYYY-MM-DD",
-            required=True
-        ),
-        "作業階段": st.column_config.SelectboxColumn(
-            "分類泳道",
-            # 這裡依據您的圖片設定了三個主要分類
-            options=[
-                "1.建築師設計審查", 
-                "2.建管作業流程 (黃色)", 
-                "3.工地現場執行 (綠色)"
-            ],
-            required=True
-        ),
-        "進度(%)": st.column_config.NumberColumn(
-            "完成度",
-            min_value=0,
-            max_value=100,
-            step=10,
-            format="%d %%"
-        )
-    }
+    # 通用欄位結構
+    columns = ["類別", "作業項目", "需準備文件/物品", "承辦單位/對象", "預計天數", "狀態", "備註"]
+    
+    if city == "台北市":
+        data = [
+            # 類別, 項目, 文件, 單位, 天數, 完成與否, 備註
+            ["行政程序", "掛號申請", "申請書、圖說、謄本、簽證", "北市建管處 (市府路)", 14, False, "需預約掛號"],
+            ["行政程序", "建照審查", "建築/結構/水電圖說", "建管處施工科", 30, False, "注意抽查項目"],
+            ["工地現場", "拆除前會勘", "現況照片、拆除計畫", "建管處/環保局", 7, False, "需提前5日通知"],
+            ["工地現場", "施工圍籬架設", "綠美化帆布、警示燈", "工地現場", 5, False, "需符合北市美化規範"],
+            ["工地現場", "放樣勘驗", "經緯儀、測量報告", "建管處/技師公會", 3, False, "需技師到場"],
+        ]
+    elif city == "新北市":
+        data = [
+            ["行政程序", "建造執照掛號", "申請書、土地同意書", "新北工務局 (中山路)", 20, False, "協審制度"],
+            ["行政程序", "環保逕流廢水申報", "廢水削減計畫書", "新北環保局", 10, False, "開工前完成"],
+            ["工地現場", "開工前鄰房現況鑑定", "鑑定報告書", "鑑定公會", 30, False, "避免日後糾紛"],
+            ["工地現場", "假設工程申報", "施工計畫書、安衛計畫", "工務局施工科", 14, False, "含鷹架/圍籬"],
+            ["工地現場", "一樓版勘驗", "鋼筋無輻射證明、混凝土單", "工務局/公會", 2, False, "無紙化申報"],
+        ]
+    else: # 台中或其他地區 (範例)
+        data = [
+            ["行政程序", "建照申請", "基本圖說", "台中都發局", 25, False, ""],
+            ["工地現場", "開工申報", "施工計畫", "都發局營造科", 7, False, "需繳空汙費"],
+        ]
 
-    # 顯示可編輯表格
-    edited_df = st.data_editor(
-        st.session_state.tasks_df,
-        column_config=column_config,
-        num_rows="dynamic", # 允許使用者動態新增/刪除列
-        use_container_width=True,
-        hide_index=True,
-        key="editor" # 給個 key 讓 streamlit 追蹤狀態
-    )
+    # 轉成 DataFrame
+    df = pd.DataFrame(data, columns=columns)
+    return df
 
-# --- 4. 圖表生成區 ---
+# --- 3. 側邊欄：控制面板 ---
+with st.sidebar:
+    st.header("📍 專案設定")
+    
+    # 選擇地區
+    selected_city = st.selectbox("選擇案件地區", ["台北市", "新北市", "台中市(範例)"])
+    
+    # 載入按鈕
+    st.info("切換地區後，請按下按鈕載入樣板👇")
+    if st.button("📥 載入/重置 標準流程", type="primary"):
+        # 將樣板資料存入 Session State (暫存記憶體)
+        st.session_state.df_tasks = get_template_data(selected_city)
+        st.success(f"已載入 {selected_city} 標準樣板！")
+
+# --- 4. 初始化資料 (第一次打開網頁時) ---
+if "df_tasks" not in st.session_state:
+    st.session_state.df_tasks = get_template_data("台北市") # 預設載入台北
+
+# --- 5. 主畫面：數據統計與清單 ---
+
+# 計算進度
+current_df = st.session_state.df_tasks
+total_tasks = len(current_df)
+completed_tasks = len(current_df[current_df["狀態"] == True])
+pending_tasks = total_tasks - completed_tasks
+progress = completed_tasks / total_tasks if total_tasks > 0 else 0
+
+# 顯示頂部儀表板
+col1, col2, col3 = st.columns(3)
+col1.metric("總作業項目", f"{total_tasks} 項")
+col2.metric("待辦事項", f"{pending_tasks} 項", delta=f"-{completed_tasks} 已完成", delta_color="inverse")
+col3.markdown(f"**目前總進度**")
+col3.progress(progress)
+
 st.divider()
-st.subheader("📊 專案時程視覺化")
 
-# 檢查使用者是否有輸入資料
-if not edited_df.empty:
-    # 資料前處理：確保日期格式正確，並移除沒填日期的髒資料
-    plot_df = edited_df.dropna(subset=["開始日期", "結束日期", "事項名稱"])
-    
-    if len(plot_df) > 0:
-        # 計算工期天數 (顯示在圖表提示上)
-        plot_df["工期"] = (pd.to_datetime(plot_df["結束日期"]) - pd.to_datetime(plot_df["開始日期"])).dt.days
-        
-        # 使用 Plotly 繪製甘特圖
-        fig = px.timeline(
-            plot_df, 
-            x_start="開始日期", 
-            x_end="結束日期", 
-            y="事項名稱", 
-            color="作業階段", # 不同階段顯示不同顏色
-            hover_data=["工期", "進度(%)"], # 滑鼠移上去顯示的資訊
-            title="建管行政與施工進度表",
-            # 設定顏色對應 (模擬您圖片的色系)
-            color_discrete_map={
-                "1.建築師設計審查": "#FFA500", # 橘色
-                "2.建管作業流程 (黃色)": "#FFD700", # 金黃色
-                "3.工地現場執行 (綠色)": "#90EE90"  # 淺綠色
-            }
-        )
+# --- 6. 核心功能：可編輯的清單 ---
+st.subheader(f"📋 {selected_city} - 建管與工地執行清單")
+st.caption("您可以直接修改內容、勾選完成狀態，或新增特殊事項。")
 
-        # 圖表美化設定
-        fig.update_yaxes(autorange="reversed") # 讓最早的項目排在最上面(或依表格順序)
-        fig.update_layout(
-            xaxis_title="日期",
-            yaxis_title="作業項目",
-            height=400 + (len(plot_df) * 30), # 自動調整高度，項目越多圖越高
-            showlegend=True
-        )
+# 設定欄位編輯屬性
+column_cfg = {
+    "類別": st.column_config.SelectboxColumn("類別", options=["行政程序", "工地現場", "圖說繪製"], width="medium"),
+    "作業項目": st.column_config.TextColumn("作業項目", width="large", required=True),
+    "需準備文件/物品": st.column_config.TextColumn("需準備文件/物品", width="large"),
+    "承辦單位/對象": st.column_config.SelectboxColumn("送件單位", options=["建管處", "都發局", "環保局", "公會", "工地現場"], width="medium"),
+    "預計天數": st.column_config.NumberColumn("天數", format="%d 天"),
+    "狀態": st.column_config.CheckboxColumn("完成?", help="勾選代表已完成"),
+}
 
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("ℹ️ 請在上方表格填寫完整的「名稱」與「起訖日期」才會顯示圖表。")
-else:
-    st.info("👆 目前表格是空白的，請開始新增您的第一筆建管作業資料！")
+# 顯示表格
+edited_df = st.data_editor(
+    current_df,
+    column_config=column_cfg,
+    num_rows="dynamic", # 允許新增刪除
+    use_container_width=True,
+    key="task_editor"
+)
 
-# --- 5. 存檔功能提示 ---
+# 當使用者在表格中編輯後，同步更新 session_state，這樣進度條才會動
+if not edited_df.equals(current_df):
+    st.session_state.df_tasks = edited_df
+    st.rerun() # 強制重新整理頁面以更新上方進度條
+
+# --- 7. 分類檢視 (篩選器) ---
 st.write("---")
-# 下載按鈕 (簡單的 CSV 匯出)
-if not edited_df.empty:
-    csv = edited_df.to_csv(index=False).encode('utf-8-sig') # utf-8-sig 避免 Excel 中文亂碼
-    st.download_button(
-        label="📥 下載進度表 (CSV)",
-        data=csv,
-        file_name='construction_schedule.csv',
-        mime='text/csv',
-    )
+st.subheader("🔍 分類檢視")
+
+tab1, tab2, tab3 = st.tabs(["🔴 未完成項目", "🏢 僅看行政程序", "🚧 僅看工地現場"])
+
+with tab1:
+    # 篩選出未完成的
+    todo_df = edited_df[edited_df["狀態"] == False]
+    if todo_df.empty:
+        st.success("太棒了！所有項目皆已完成。")
+    else:
+        st.dataframe(todo_df[["作業項目", "需準備文件/物品", "承辦單位/對象"]], use_container_width=True)
+
+with tab2:
+    admin_df = edited_df[edited_df["類別"] == "行政程序"]
+    st.dataframe(admin_df, use_container_width=True)
+
+with tab3:
+    site_df = edited_df[edited_df["類別"] == "工地現場"]
+    st.dataframe(site_df, use_container_width=True)
