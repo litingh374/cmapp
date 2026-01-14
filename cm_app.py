@@ -5,7 +5,7 @@ from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (防呆版)",
+    page_title="建案行政SOP系統 (NW整合版)",
     page_icon="🏗️",
     layout="wide"
 )
@@ -30,7 +30,7 @@ st.markdown("""
         border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4;
     }
     
-    /* 強制顯示的警語樣式 (Critical Info) */
+    /* 關鍵警語 */
     .critical-info {
         color: #d32f2f; font-size: 0.9em; font-weight: bold; margin-left: 25px; margin-bottom: 5px;
         background-color: #ffebee; padding: 2px 8px; border-radius: 4px; display: inline-block;
@@ -41,14 +41,18 @@ st.markdown("""
         background-color: #f8f9fa; padding: 10px; border-radius: 5px; 
         border-left: 5px solid #6c757d; font-size: 0.9em; margin-bottom: 5px;
     }
+    .nw-header {
+        background-color: #e8f5e9; padding: 10px; border-radius: 5px; 
+        border: 1px solid #c8e6c9; margin-bottom: 10px; font-weight: bold; color: #2e7d32;
+    }
     div[data-testid="stExpander"] { margin-top: -5px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏗️ 建案開工至放樣 SOP 控管系統 (防呆優化版)")
-st.caption("依據：申辦開工、計劃、放樣用清冊 (終極版) ｜ 關鍵限制強制顯示")
+st.title("🏗️ 建案開工至放樣 SOP 控管系統 (NW整合版)")
+st.caption("依據：申辦開工、計劃、放樣用清冊 (終極版) ｜ NW文件清單已整合至開工申報")
 
-# --- 2. 核心資料庫 (加入 critical 欄位) ---
+# --- 2. 核心資料庫 ---
 def get_initial_sop():
     return {
         "stage_0": [ 
@@ -58,7 +62,7 @@ def get_initial_sop():
                 "method": "線上",
                 "timing": "【掛號階段】", 
                 "docs": "1. 申請書電子檔 (XML/PDF)\n2. 建照圖/結構圖 (D1/S1)\n3. 鑽探報告", 
-                "critical": "", # 無特殊警語
+                "critical": "", 
                 "details": "透過「建築執照無紙化審查系統」上傳。需使用自然人憑證進行電子簽章。核准後直接線上進行副本校對。", 
                 "done": False, "note": ""
             },
@@ -80,7 +84,7 @@ def get_initial_sop():
                 "method": "紙本",
                 "timing": "【開工前】", 
                 "docs": "1. 鑑定申請書\n2. 繳費證明\n3. 鄰房清冊", 
-                "critical": "⚠️ 強制辦理：大同區迪化街區、拆照/拆併建照案", # [修正] 這裡直接顯示
+                "critical": "⚠️ 強制辦理：大同區迪化街區、拆照/拆併建照案", 
                 "details": "若不辦理需檢附「不作鄰房鑑定切結書」(責任自負)。如鄰房屬老舊建物，需增加安全及補強評估報告。", 
                 "done": False, "note": ""
             },
@@ -90,7 +94,7 @@ def get_initial_sop():
                 "method": "線上",
                 "timing": "【開工前】", 
                 "docs": "1. 拆除土石方(B5)核准函\n2. 營建混合物(B8)核准函", 
-                "critical": "⚠️ 拆除規模達地上10層以上，需先辦理拆除計畫外審", # [修正] 直接顯示
+                "critical": "⚠️ 拆除規模達地上10層以上，需先辦理拆除計畫外審", 
                 "details": "若現場無B5土方，列管數量應修正為0。需向施工科申請 B5，向環保局申請 B8。", 
                 "done": False, "note": ""
             },
@@ -100,7 +104,7 @@ def get_initial_sop():
                 "method": "線上",
                 "timing": "【開工前】", 
                 "docs": "1. 削減計畫書\n2. 沉沙池圖說", 
-                "critical": "⚠️ 門檻：面積 × 工期(月) 達 4600 (m²·月) 均需辦理", # [修正] 直接顯示
+                "critical": "⚠️ 門檻：面積 × 工期(月) 達 4600 (m²·月) 均需辦理", 
                 "details": "包含拆除工程或建築工程，只要符合上述公式即須辦理。", 
                 "done": False, "note": ""
             },
@@ -119,8 +123,8 @@ def get_initial_sop():
                 "dept": "建管處", 
                 "method": "線上",
                 "timing": "【建照後6個月內】", 
-                "docs": "詳見「NW文件檢查表」分頁", 
-                "critical": "⚠️ 線上掛號後 1 日內需親送正本核對", # [修正] 直接顯示
+                "docs": "⚠️ 請務必確認上方 NW 文件皆已備齊", 
+                "critical": "⚠️ 線上掛號後 1 日內需親送正本核對", 
                 "details": "需使用 HICOS 憑證元件及工商憑證。核對無誤以系統送出日為準；若逾3日才審查，以准予掛號日為準。", 
                 "done": False, "note": ""
             }
@@ -183,7 +187,7 @@ def get_initial_sop():
         ]
     }
 
-# --- 3. NW 文件清單 (檢查表) ---
+# --- 3. NW 文件清單 ---
 def get_nw_checklist():
     return [
         ("NW0100", "建築工程開工申報書", "起造人表頭及位置欄用章、建築師、營造廠、技師、工地主任簽章"),
@@ -215,11 +219,6 @@ def get_nw_checklist():
 # --- 4. 初始化 ---
 if "sop_data" not in st.session_state:
     st.session_state.sop_data = get_initial_sop()
-else:
-    # 版本檢查：確保新欄位 critical 存在，否則重置
-    if "critical" not in st.session_state.sop_data["stage_1"][0]:
-        st.session_state.sop_data = get_initial_sop()
-        st.rerun()
 
 if "nw_status" not in st.session_state:
     st.session_state.nw_status = {code: False for code, _, _ in get_nw_checklist()}
@@ -258,7 +257,7 @@ with st.sidebar:
         st.session_state.nw_status = {code: False for code, _, _ in get_nw_checklist()}
         st.rerun()
 
-# --- 7. 渲染 SOP 列表函數 (強化警語顯示) ---
+# --- 7. 渲染 SOP 列表函數 ---
 def render_stage_detailed(stage_key, is_locked=False):
     stage_items = data[stage_key]
     
@@ -280,7 +279,6 @@ def render_stage_detailed(stage_key, is_locked=False):
                 )
             
             with col2:
-                # 標籤
                 method = item.get('method', '現場')
                 method_tag = ""
                 if method == "線上":
@@ -290,7 +288,6 @@ def render_stage_detailed(stage_key, is_locked=False):
                 else:
                     method_tag = f'<span class="tag-paper">{method}</span>'
 
-                # 標題
                 title_html = f"**{item['item']}** {method_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
                 
                 if item['done']:
@@ -298,11 +295,9 @@ def render_stage_detailed(stage_key, is_locked=False):
                 else:
                     st.markdown(title_html, unsafe_allow_html=True)
                 
-                # [關鍵修改] 這裡直接顯示紅色警語，不需要點開 Expander
                 if item.get("critical"):
                     st.markdown(f"<div class='critical-info'>{item['critical']}</div>", unsafe_allow_html=True)
 
-                # 詳細資訊
                 with st.expander("🔽 詳細指引與備註", expanded=False):
                     st.markdown(f"**🕒 時機：** {item['timing']}")
                     st.markdown(f"**📄 應備文件：**\n{item['docs']}")
@@ -327,54 +322,51 @@ if current >= 3 and all(i['done'] for i in data['stage_3']): current += 1
 
 st.progress(current/5, text=f"專案總進度")
 
-# [關鍵修改] 調整了 Tabs 的順序，將 NW 文件檢查表移到 1.開工申報 之前
-tabs = st.tabs(["0.建照領取", "1.NW開工文件準備", "2.開工申報(掛號)", "3.施工計畫", "4.導溝勘驗", "5.放樣勘驗"])
+# [修正] 流程回歸 5 大步驟，移除 NW 獨立分頁
+tabs = st.tabs(["0.建照領取", "1.開工申報(掛號)", "2.施工計畫", "3.導溝勘驗", "4.放樣勘驗"])
 
 with tabs[0]:
     st.subheader("🔑 階段零：建照領取")
     render_stage_detailed("stage_0", is_locked=False)
 
 with tabs[1]:
-    st.subheader("📑 NW 開工文件準備清單")
-    st.info("此清單為「申報開工」之前置作業，請確認文件編碼、用印是否齊全。")
-    st.markdown("---")
+    st.subheader("📋 階段一：開工申報 (含NW文件檢查)")
     
-    checklist = get_nw_checklist()
-    # 這裡顯示 NW 列表
-    for code, name, note in checklist:
-        c1, c2, c3 = st.columns([0.5, 3.5, 6])
-        with c1:
-            st.checkbox(
-                "", 
-                value=st.session_state.nw_status[code], 
-                key=f"nw_{code}",
-                on_change=toggle_nw,
-                args=(code,)
-            )
-        with c2:
-            if st.session_state.nw_status[code]:
-                st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>{code} {name}</span>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"**{code}** {name}")
-        with c3:
-            st.caption(f"🖊️ {note}")
-        st.divider()
+    if not permit_unlocked:
+        st.markdown('<div class="locked-stage">🔒 請先完成建照領取階段</div>', unsafe_allow_html=True)
+    else:
+        # [新增] 內嵌 NW 檢查表區塊
+        with st.expander("📑 點此展開「NW 開工文件準備檢查表」 (掛號前必備)", expanded=True):
+            st.markdown('<div class="nw-header">請確認以下 PDF 檔案已備齊並完成用印/掃描：</div>', unsafe_allow_html=True)
+            checklist = get_nw_checklist()
+            
+            # 使用更緊湊的佈局
+            for code, name, note in checklist:
+                c1, c2, c3 = st.columns([0.5, 4, 5.5])
+                with c1:
+                    st.checkbox("", value=st.session_state.nw_status[code], key=f"nw_{code}", on_change=toggle_nw, args=(code,))
+                with c2:
+                    if st.session_state.nw_status[code]:
+                        st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>{code} {name}</span>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"**{code}** {name}")
+                with c3:
+                    st.caption(f"🖊️ {note}")
+        
+        st.markdown("---")
+        st.markdown("### ✅ 正式申報流程")
+        # 顯示原本的開工申報 SOP
+        render_stage_detailed("stage_1", is_locked=False)
 
 with tabs[2]:
-    st.subheader("📋 階段一：開工申報 (正式掛號)")
-    # 這裡主要是確認 NW 文件都準備好了，才進行掛號
-    st.caption("請確認前一頁籤「1. NW開工文件準備」已完成後，再進行此階段。")
-    render_stage_detailed("stage_1", is_locked=not permit_unlocked)
-
-with tabs[3]:
     st.subheader("📘 階段二：施工計畫")
     render_stage_detailed("stage_2", is_locked=not (permit_unlocked and s1_done))
 
-with tabs[4]:
+with tabs[3]:
     st.subheader("🚧 階段三：導溝勘驗")
     render_stage_detailed("stage_3", is_locked=not (s2_done and s1_done))
 
-with tabs[5]:
+with tabs[4]:
     st.subheader("📐 階段四：放樣勘驗")
     render_stage_detailed("stage_4", is_locked=not all(i['done'] for i in data['stage_3']))
 
@@ -390,7 +382,6 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             all_rows.append(item_copy)
     df_export = pd.DataFrame(all_rows)
     df_export['申辦方式'] = df_export.apply(lambda x: x.get('method', '現場'), axis=1)
-    # 加入 critical 欄位匯出
     df_export = df_export[["階段代號", "item", "申辦方式", "dept", "critical", "timing", "docs", "details", "done", "note"]]
     df_export.columns = ["階段", "項目", "申辦方式", "單位", "重要限制", "時限", "文件", "指引", "完成", "備註"]
     df_export.to_excel(writer, index=False, sheet_name='SOP流程進度')
@@ -409,6 +400,6 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
 st.download_button(
     label="📥 下載完整 Excel (含NW檢查表)",
     data=buffer.getvalue(),
-    file_name=f"SOP_Construction_Final_{date.today()}.xlsx",
+    file_name=f"SOP_Construction_Integrated_{date.today()}.xlsx",
     mime="application/vnd.ms-excel"
 )
