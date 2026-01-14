@@ -6,13 +6,14 @@ from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (V15.1 流暢版)",
+    page_title="建案行政SOP系統 (V16.0 極速版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 版本控制 (V15.1) ---
-CURRENT_VERSION = 15.1
+# --- 2. 🛡️ 版本控制 (V16.0) ---
+# 升級版本號，清除舊緩存
+CURRENT_VERSION = 16.0
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
@@ -22,7 +23,7 @@ elif st.session_state.data_version != CURRENT_VERSION:
     st.session_state.data_version = CURRENT_VERSION
     st.rerun()
 
-# --- 3. 初始化特殊狀態 (空污費專用) ---
+# --- 3. 初始化狀態 ---
 special_flags = [
     "flag_slope", "flag_public", "flag_expired", 
     "flag_change", "flag_existing", "flag_demo_included"
@@ -39,10 +40,10 @@ st.markdown("""
         border-color: #2E7D32 !important;
     }
     .stProgress > div > div > div > div { background-color: #2E7D32; }
-    .tag-online { background-color: #e3f2fd; color: #0d47a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #90caf9; }
-    .tag-paper { background-color: #efebe9; color: #5d4037; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4; }
-    .tag-demo { background-color: #ffcdd2; color: #b71c1c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ef9a9a; }
-    .tag-struct { background-color: #e1bee7; color: #4a148c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ce93d8; }
+    .tag-online { background-color: #e3f2fd; color: #0d47a1; padding: 1px 6px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #90caf9; }
+    .tag-paper { background-color: #efebe9; color: #5d4037; padding: 1px 6px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4; }
+    .tag-demo { background-color: #ffcdd2; color: #b71c1c; padding: 1px 6px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ef9a9a; }
+    .tag-struct { background-color: #e1bee7; color: #4a148c; padding: 1px 6px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ce93d8; }
     .critical-info {
         color: #d32f2f; font-size: 0.9em; font-weight: bold; margin-left: 25px; margin-bottom: 5px;
         background-color: #ffebee; padding: 2px 8px; border-radius: 4px; display: inline-block;
@@ -58,16 +59,18 @@ st.markdown("""
         border: 1px solid #e1bee7;
         margin-bottom: 15px;
     }
+    div[data-testid="stExpander"] { margin-top: -5px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title(f"🏗️ 建案行政SOP系統 (Ver {CURRENT_VERSION})")
-st.caption("最新版：優化空污費操作流暢度 (移除頻繁重整)、完整收錄所有文件")
+st.caption("效能優化：移除強制重整邏輯，操作更流暢")
 
-# --- 4. 輔助函數 ---
-def generate_key(stage, item_name):
-    raw_str = f"{stage}_{item_name}"
-    return hashlib.md5(raw_str.encode()).hexdigest()[:10]
+# --- 4. 輔助函數 (快取優化) ---
+@st.cache_data
+def generate_key_cached(stage, item_name):
+    # 簡單的字串拼接比 md5 更快，適合前端 UI Key
+    return f"{stage}_{item_name}".replace(" ", "_")
 
 # --- 5. 側邊欄：參數輸入 ---
 with st.sidebar:
@@ -94,7 +97,6 @@ with st.sidebar:
         span_rc = st.number_input("RC最大跨距(m)", value=0.0)
         
     is_geo_sensitive = st.checkbox("位於地質敏感區", value=False)
-    is_slope_land_param = st.checkbox("位於山坡地 (結構外審判斷用)", value=False) # 改名避免與空污費 flag 混淆
 
     # 邏輯判讀
     pollution_value = base_area * duration_month
@@ -108,7 +110,6 @@ with st.sidebar:
         excavation_depth > 12 or 
         floors_below > 3 or 
         span_rc > 12 or
-        is_slope_land_param or
         (is_geo_sensitive and (excavation_depth > 7 or floors_below > 1))
     )
     is_demo_review_needed = is_demo_project and floors_above > 10
@@ -206,18 +207,12 @@ def get_current_sop_data():
             {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構施工前】", "docs": "⚠️ 確認 NS 勘驗文件備齊", "critical": "⚠️ 現場不得先行施工", "details": "建管處網路核備後，需送建照正本及勘驗紙本至櫃台掛件。", "demo_only": False, "struct_only": False}
         ]
     }
-    
-    for stage, items in raw_data.items():
-        for item in items:
-            key = generate_key(stage, item['item'])
-            item['done'] = st.session_state.get(f"chk_{key}", False)
-            item['note'] = st.session_state.get(f"note_{key}", "")
-            
     return raw_data
 
-# --- 8. 完整文件清單 (收錄所有重複項目) ---
-def get_all_checklists():
-    # 1. 開工申報
+# --- 8. 完整文件清單 (快取優化) ---
+@st.cache_data
+def get_all_checklists_cached():
+    # 1. 開工申報 (NW0100-NW9900)
     list_start = [
         ("NW0100", "建築工程開工申報書", "起造/建築/營造/技師/工地主任簽章", False),
         ("NW0200", "起造人名冊", "各起造人用起造章", False),
@@ -334,7 +329,8 @@ def get_all_checklists():
     ]
     return list_start, list_plan, list_ns
 
-def get_site_audit_list():
+@st.cache_data
+def get_site_audit_list_cached():
     return [
         ("現場告示牌", "拍照時人員不可遮擋資訊"),
         ("施工圍籬 (甲種)", "高度2.4m以上 (臨安全走廊3m)"),
@@ -344,59 +340,57 @@ def get_site_audit_list():
         ("騎樓公告", "張貼騎樓打通/封閉公告")
     ]
 
-# --- 9. 狀態初始化 ---
-if "sop_data" not in st.session_state:
-    st.session_state.sop_data = get_current_sop_data()
+# --- 9. 狀態初始化與同步 ---
+# 取得靜態資料 (Cached)
+list_start, list_plan, list_ns = get_all_checklists_cached()
+site_list = get_site_audit_list_cached()
 
-list_start, list_plan, list_ns = get_all_checklists()
-all_checklists_codes = []
+# 取得動態資料
+sop_data = get_current_sop_data()
+
+# 初始化 Checklist 狀態
 for lst, cat in [(list_start, "start"), (list_plan, "plan"), (list_ns, "ns")]:
     for code, _, _, _ in lst:
-        all_checklists_codes.append(f"{code}_{cat}")
+        key = f"chk_{code}_{cat}"
+        if key not in st.session_state:
+            st.session_state[key] = False
 
-if "nw_status" not in st.session_state:
-    st.session_state.nw_status = {key: False for key in all_checklists_codes}
-else:
-    for key in all_checklists_codes:
-        if key not in st.session_state.nw_status:
-            st.session_state.nw_status[key] = False
+# 初始化現場稽核狀態
+for item in site_list:
+    key = f"chk_site_{item[0]}"
+    if key not in st.session_state:
+        st.session_state[key] = False
 
-if "site_status" not in st.session_state:
-    st.session_state.site_status = {item[0]: False for item in get_site_audit_list()}
+# 初始化 SOP 項目狀態 (確保 key 存在)
+for stage, items in sop_data.items():
+    for item in items:
+        chk_key = f"chk_{generate_key_cached(stage, item['item'])}"
+        if chk_key not in st.session_state:
+            st.session_state[chk_key] = False
+        if f"note_{chk_key[4:]}" not in st.session_state:
+            st.session_state[f"note_{chk_key[4:]}"] = ""
 
-st.session_state.sop_data = get_current_sop_data()
-data = st.session_state.sop_data
-
-# --- 10. Callback ---
-def toggle_status(stage_key, index):
-    pass
-
-def toggle_nw(key):
-    st.session_state.nw_status[key] = not st.session_state.nw_status[key]
-
-def toggle_site(name):
-    st.session_state.site_status[name] = not st.session_state.site_status[name]
-
-# --- 11. 渲染函數 ---
+# --- 10. 渲染函數 (移除手動 Rerun，依賴原生綁定) ---
 def render_stage_detailed(stage_key, is_locked=False):
-    stage_items = data[stage_key]
-    if is_locked: st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
-
-    for i, item in enumerate(stage_items):
+    stage_items = sop_data[stage_key]
+    
+    if is_locked: 
+        st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
+    
+    for item in stage_items:
         if item.get("demo_only") and not is_demo_project: continue
         if item.get("demo_only") and item.get("critical") == "" and not is_demo_review_needed: continue
         if item.get("struct_only") and not is_struct_review_needed: continue
 
         with st.container():
             col1, col2 = st.columns([0.5, 9.5])
-            chk_key = f"chk_{generate_key(stage_key, item['item'])}"
-            note_key = f"note_{generate_key(stage_key, item['item'])}"
+            chk_key = f"chk_{generate_key_cached(stage_key, item['item'])}"
+            note_key = f"note_{generate_key_cached(stage_key, item['item'])}"
             
             with col1:
-                new_status = st.checkbox("", value=item['done'], key=chk_key, disabled=is_locked)
-                if new_status != item['done']:
-                    item['done'] = new_status
-                    st.rerun()
+                # [核心修正] 使用 key 綁定，不手動 rerun，避免兩次刷新造成的 lag
+                st.checkbox("", key=chk_key, disabled=is_locked)
+                is_checked = st.session_state[chk_key]
 
             with col2:
                 method = item.get('method', '現場')
@@ -404,14 +398,15 @@ def render_stage_detailed(stage_key, is_locked=False):
                 demo_tag = '<span class="tag-demo">🏗️ 拆除</span>' if item.get("demo_only") else ""
                 
                 title_html = f"**{item['item']}** {method_tag} {demo_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
-                if item['done']: 
+                
+                if is_checked: 
                     st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
                 else: 
                     st.markdown(title_html, unsafe_allow_html=True)
                 
                 if item.get("critical"): st.markdown(f"<div class='critical-info'>{item['critical']}</div>", unsafe_allow_html=True)
 
-                # 空污費特殊區塊 (V15.1 優化版)
+                # 空污費特殊區塊
                 if item['item'] == "空氣污染防制費申報":
                     with st.expander("🔽 詳細指引與檢核 (含特殊案件勾選)", expanded=False):
                         st.markdown("""
@@ -419,7 +414,6 @@ def render_stage_detailed(stage_key, is_locked=False):
                         <b>🚩 特殊案件條件勾選 (系統將自動更新下方清單)：</b><br>
                         """, unsafe_allow_html=True)
                         
-                        # [優化] 改用 key 綁定，移除 st.rerun() 以減少卡頓
                         c1, c2 = st.columns(2)
                         with c1:
                             st.checkbox("位於山坡地基地", key="flag_slope")
@@ -439,7 +433,6 @@ def render_stage_detailed(stage_key, is_locked=False):
                         st.markdown(f"**📄 自動產生應備文件清單：**\n\n{dynamic_details}")
                         st.markdown("---")
                         st.markdown(f"**💡 作業指引：**\n臺北市營建工程空污費網路申報系統 (02-27208889 #7252)\n1.註冊 -> 2.申報 -> 3.繳款")
-                        
                         st.text_input("備註", key=note_key)
                 
                 else:
@@ -458,12 +451,11 @@ def render_checklist(checklist_data, title, tab_name):
             c1, c2, c3 = st.columns([0.5, 4, 5.5])
             
             unique_id = f"{code}_{tab_name}"
-            is_checked = st.session_state.nw_status.get(unique_id, False)
+            chk_key = f"chk_{unique_id}"
             
-            new_checked = st.checkbox("", value=is_checked, key=f"chk_{unique_id}")
-            if new_checked != is_checked:
-                st.session_state.nw_status[unique_id] = new_checked
-                st.rerun()
+            # 使用原生 key 綁定
+            st.checkbox("", key=chk_key)
+            is_checked = st.session_state[chk_key]
 
             with c2: 
                 style = "color:#2E7D32; font-weight:bold;" if is_checked else ""
@@ -472,33 +464,32 @@ def render_checklist(checklist_data, title, tab_name):
 
 def render_site_audit():
     st.markdown('<div class="check-header">📸 現場放樣勘驗自我稽核 (務必確認以免退件)</div>', unsafe_allow_html=True)
-    audit_list = get_site_audit_list()
+    audit_list = get_site_audit_list_cached()
     for name, note in audit_list:
         c1, c2, c3 = st.columns([0.5, 4, 5.5])
         chk_key = f"chk_site_{name}"
-        with c1: 
-            if st.checkbox("", key=chk_key):
-                st.rerun()
-        is_checked = st.session_state.get(chk_key, False)
+        
+        st.checkbox("", key=chk_key)
+        is_checked = st.session_state[chk_key]
         
         with c2: st.markdown(f"**{name}**" if not is_checked else f"<span style='color:#2E7D32;font-weight:bold;'>{name}</span>", unsafe_allow_html=True)
         with c3: st.info(f"💡 {note}")
         st.divider()
 
-# --- 12. 主流程 ---
+# --- 12. 主流程 (解鎖邏輯) ---
 def check_stage_complete(stage_key):
-    data = get_current_sop_data()
-    items = data[stage_key]
+    items = sop_data[stage_key]
     for item in items:
         if item.get("demo_only") and not is_demo_project: continue
         if item.get("demo_only") and item.get("critical") == "" and not is_demo_review_needed: continue
         if item.get("struct_only") and not is_struct_review_needed: continue
         
-        key = f"chk_{generate_key(stage_key, item['item'])}"
+        key = f"chk_{generate_key_cached(stage_key, item['item'])}"
         if not st.session_state.get(key, False):
             return False
     return True
 
+# 計算解鎖狀態 (Streamlit 會自動在每次 Rerun 時重新計算這裡)
 s0_done = check_stage_complete('stage_0')
 s1_done = check_stage_complete('stage_1')
 s2_done = check_stage_complete('stage_2')
@@ -544,15 +535,14 @@ with tabs[4]:
 st.write("---")
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    data = get_current_sop_data()
     all_rows = []
-    for k, v in data.items():
+    for k, v in sop_data.items():
         for item in v:
             if item.get("demo_only") and not is_demo_project: continue
             
-            key = f"chk_{generate_key(k, item['item'])}"
+            key = f"chk_{generate_key_cached(k, item['item'])}"
             item['done'] = st.session_state.get(key, False)
-            item['note'] = st.session_state.get(f"note_{generate_key(k, item['item'])}", "")
+            item['note'] = st.session_state.get(f"note_{generate_key_cached(k, item['item'])}", "")
             
             item_copy = item.copy()
             item_copy['階段代號'] = k
@@ -565,7 +555,7 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
     for lst, cat in [(list_start, "start"), (list_plan, "plan"), (list_ns, "ns")]:
         for code, name, note, demo_only in lst:
             if demo_only and not is_demo_project: continue
-            status = "完成" if st.session_state.nw_status.get(f"{code}_{cat}", False) else "未完成"
+            status = "完成" if st.session_state.get(f"chk_{code}_{cat}", False) else "未完成"
             check_rows.append({"階段": cat, "編號": code, "名稱": name, "備註": note, "狀態": status})
             
     if check_rows:
