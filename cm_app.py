@@ -6,13 +6,13 @@ from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (V13.0 空污費防呆版)",
+    page_title="建案行政SOP系統 (V14.0 精細化版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 版本控制 (V13.0) ---
-CURRENT_VERSION = 13.0
+# --- 2. 🛡️ 版本控制 (V14.0) ---
+CURRENT_VERSION = 14.0
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
@@ -39,12 +39,13 @@ st.markdown("""
     }
     .info-box { background-color: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 5px solid #6c757d; font-size: 0.9em; margin-bottom: 5px; }
     .nw-header { background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #c8e6c9; margin-bottom: 10px; font-weight: bold; color: #2e7d32; }
+    .check-header { background-color: #fff3e0; padding: 10px; border-radius: 5px; border: 1px solid #ffe0b2; margin-bottom: 10px; font-weight: bold; color: #e65100; }
     div[data-testid="stExpander"] { margin-top: -5px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title(f"🏗️ 建案行政SOP系統 (Ver {CURRENT_VERSION})")
-st.caption("新增：空污費詳細防呆邏輯 (山坡地/公家工程/B8門檻判斷)")
+st.caption("更新：空污費申報文件精細化 (指定頁面、正影本區分、用印規定)")
 
 # --- 3. 輔助函數 ---
 def generate_key(stage, item_name):
@@ -119,33 +120,35 @@ with st.sidebar:
 # --- 5. 核心 SOP 資料庫 ---
 def get_current_sop_data():
     
-    # --- 動態生成空污費文件清單 ---
-    air_pollution_docs = "1. 空污費申報書\n2. 工程合約書影本\n3. 建照影本"
-    air_pollution_notes = "**文件檢附特別規定 (依勾選條件)：**\n"
+    # --- 動態生成空污費文件清單 (V14.0 精細化內容) ---
+    air_pollution_docs = "1. 空污費申報書\n2. 建照影本"
+    
+    # 基礎提示
+    doc_details = []
     
     if is_slope_land:
-        air_pollution_docs += "\n4. 合約詳細影本(含條款/總價/明細/用印頁)"
-        air_pollution_notes += "- **山坡地**：需檢附完整合約影本，含甲乙雙方用印及工程項次明細。\n"
+        doc_details.append("★ **山坡地基地**：\n   需檢附合約之「封面、條款、甲乙方、總價金額、用印欄頁及工程項次明細表」等影本 (需全部業主用章)。")
     
     if is_public_works:
-        air_pollution_docs += "\n5. 業務主管機關開工證明(正本)"
-        air_pollution_notes += "- **工程契約型(公務)**：需附工程契約影本(含決標紀錄)及機關開工證明正本。\n"
+        doc_details.append("★ **工程契約型(公務)**：\n   1. 工程契約書影本 (含封面、契約價金之給付條款總價頁、甲乙雙人用印頁、工程總表及明細表、決標記錄影本)。\n   2. 業務主管機關之開工證明「正本」。\n   (均需用起造人大小章)。")
+    else:
+        # 非公務案件通常也需要合約影本佐證金額
+        doc_details.append("★ **一般案件**：\n   需檢附合約影本 (含封面、條款、甲乙方、總價金額、用印欄頁)。")
         
     if is_permit_expired:
-        air_pollution_docs += "\n6. 開工展期申請書影本"
-        air_pollution_notes += "- **領照逾6個月**：需附開工展期申請書(全部業主用印)。\n"
+        doc_details.append("★ **領照逾6個月**：\n   應檢附「開工展期申請書」影本 (全部業主大小章)。")
         
     if has_change_applicant:
-        air_pollution_docs += "\n7. 變更起造人/承造人申請書影本"
-        air_pollution_notes += "- **曾變更起/承造人**：需附變更申請書(全部業主用印)。\n"
+        doc_details.append("★ **變更過起造人/承造人**：\n   應檢附「變更申請書」影本 (全部業主大小章)。")
         
     if has_existing_building:
-        air_pollution_docs += "\n8. 建築執照申請書及建物概要表影本"
-        air_pollution_notes += "- **基地已有建物**：需附申請書及概要表(全部業主用印)。\n"
+        doc_details.append("★ **基地已有建物(如學校)**：\n   請加附「建築執照申請書」及「建物概要表」影本 (全部業主大小章)。")
         
     if is_demo_project:
-        air_pollution_docs += "\n9. 拆照影本及拆照空污費繳費單"
-        air_pollution_notes += "- **列管拆照**：需附拆照影本及繳費單(全部業主用印)。\n"
+        doc_details.append("★ **屬建照列管拆照者**：\n   檢附「拆照影本」及「拆照空污費繳費單」影本 (全部業主大小章)。")
+
+    # 組合文件清單字串
+    docs_display_text = "\n\n".join(doc_details)
 
     # --- 警語生成 ---
     b8_msg = "⚠️ 需向環保局四科辦理 B8 營建混合物列管 (面積>500m² 或 經費>500萬)" if is_b8_needed else ""
@@ -165,13 +168,13 @@ def get_current_sop_data():
                 "dept": "環保局(空噪科)", 
                 "method": "線上", 
                 "timing": "【開工前】", 
-                "docs": air_pollution_docs, 
-                "critical": b8_msg, # 這裡顯示 B8 警語
+                "docs": "請參閱下方詳細指引", 
+                "critical": b8_msg, 
                 "details": f"""
                 **臺北市營建工程空污費網路申報系統** (02-27208889 #7252)
-                1. 註冊帳號 -> 2. 填寫資料/上傳 -> 3. 下載繳款書 -> 4. 繳款
                 
-                {air_pollution_notes}
+                **📄 應備文件清單 (依勾選條件自動產生)：**
+                {docs_display_text}
                 
                 **⚠️ B8 營建混合物管制：**
                 若工程面積達 500m² 或 經費達 500萬元，環保局第四科將列管 B8 運送清理計畫。
@@ -203,7 +206,7 @@ def get_current_sop_data():
             {"item": "結構外審-細部設計審查", "dept": "結構外審公會", "method": "會議", "timing": "【施工計畫/放樣前】", "docs": "1. 細部結構配筋圖\n2. 核備公函", "critical": struct_msg, "details": "需完成細部設計審查並取得建照科核備。", "demo_only": False, "struct_only": True},
             {"item": "施工計畫說明會 (外審)", "dept": "相關公會", "method": "會議", "timing": "【計畫核定前】", "docs": "1. 施工計畫書\n2. 簡報", "critical": struct_msg, "details": "條件同結構外審 (深開挖、高樓層、大跨距等)。", "demo_only": False, "struct_only": False},
             {"item": "交通維持計畫", "dept": "交通局", "method": "紙本", "timing": "【施工計畫前】", "docs": "1. 交維計畫書", "critical": traffic_msg, "details": "樓地板面積>10000m²強制辦理。", "demo_only": False, "struct_only": False},
-            {"item": "施工計畫書核備 (上傳)", "dept": "建管處", "method": "線上", "timing": "【放樣前】", "docs": "⚠️ 確認 NW 施工計畫文件備齊", "critical": "", "details": "\n**無紙化規定**：\n1. 掃描 A3/A4 格式 PDF。\n2. 配筋圖需至公會用印。\n3. 圖說檔案編號 NW4700~NW5000。", "demo_only": False, "struct_only": False},
+            {"item": "施工計畫書核備 (上傳)", "dept": "建管處", "method": "線上", "timing": "【放樣前】", "docs": "⚠️ 確認 NW 施工計畫文件備齊", "critical": "", "details": "\n**無紙化規定**：\n1. 掃描 A3(圖說)/A4 格式 PDF。\n2. 配筋圖需至公會用印。\n3. 圖說檔案編號 NW4700~NW5000。", "demo_only": False, "struct_only": False},
             {"item": "舊屋拆除與廢棄物結案", "dept": "環保局", "method": "線上", "timing": "【拆除後】", "docs": "1. 結案申報書", "critical": "⚠️ B5/B8 未結案，無法進行放樣", "details": "拆除完成後需解除列管。", "demo_only": True, "struct_only": False}
         ],
         "stage_3": [ 
@@ -411,7 +414,7 @@ def render_stage_detailed(stage_key, is_locked=False):
             with col2:
                 method = item.get('method', '現場')
                 method_tag = f'<span class="tag-online">🔵 線上</span>' if method == "線上" else f'<span class="tag-paper">🟤 {method}</span>'
-                demo_tag = '<span class="tag-demo">🏗️ 拆除專項</span>' if item.get("demo_only") else ""
+                demo_tag = '<span class="tag-demo">🏗️ 拆除</span>' if item.get("demo_only") else ""
                 
                 title_html = f"**{item['item']}** {method_tag} {demo_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
                 if item['done']: 
@@ -494,7 +497,6 @@ with tabs[1]:
     else:
         render_checklist(list_start, "NW 開工文件準備檢查表", "start")
         st.markdown("---")
-        st.markdown("### ✅ 正式申報流程")
         render_stage_detailed("stage_1", is_locked=False)
 
 with tabs[2]:
@@ -528,6 +530,7 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
     for k, v in data.items():
         for item in v:
             if item.get("demo_only") and not is_demo_project: continue
+            if item.get("struct_only") and not is_struct_review_needed: continue
             
             key = f"chk_{generate_key(k, item['item'])}"
             item['done'] = st.session_state.get(key, False)
