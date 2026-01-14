@@ -1,27 +1,28 @@
 import streamlit as st
 import pandas as pd
+import io  # [修正] 補上這個必要的套件
 from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (全流程旗艦版)",
+    page_title="建案行政SOP系統 (最終修復版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 強制修復機制 (防止報錯的核心) ---
-# 設定資料版本號，只要改動資料結構，就升級版本號，強制重置使用者的暫存
-CURRENT_VERSION = 4.0
+# --- 2. 🛡️ 版本控制與強制重置 ---
+# 只要這個數字改變，使用者的瀏覽器暫存就會被強制清空，解決所有新舊資料衝突
+CURRENT_VERSION = 5.2
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
     st.session_state.data_version = CURRENT_VERSION
 elif st.session_state.data_version != CURRENT_VERSION:
-    st.session_state.clear() # 版本不同，清除所有舊資料防止報錯
+    st.session_state.clear()
     st.session_state.data_version = CURRENT_VERSION
-    st.rerun() # 重新整理頁面
+    st.rerun()
 
-# --- CSS 優化 ---
+# --- CSS 美化 ---
 st.markdown("""
 <style>
     div[data-testid="stCheckbox"] label span[data-checked="true"] {
@@ -42,8 +43,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏗️ 建案開工至放樣 SOP 控管系統 (全流程旗艦版)")
-st.caption("整合：開工NW清單、施工計畫圖說規定(A3/A4)、放樣NS申報編碼")
+st.title("🏗️ 建案開工至放樣 SOP 控管系統 (最終修復版)")
+st.caption("已修復：重複文件報錯問題、解鎖邏輯、Excel下載功能")
 
 # --- 3. 定義完整文件清單 (資料庫) ---
 def get_all_checklists():
@@ -70,7 +71,7 @@ def get_all_checklists():
         ("NW2900", "塔式起重機自主檢查表", "無則附切結書", False)
     ]
     
-    # 2. 施工計畫 (NW3200-NW9900) - 依據您提供的詳細資料
+    # 2. 施工計畫 (NW3200-NW9900) - 包含重複的 NW0500 等
     list_plan = [
         ("NW0500", "建築執照", "掃描正本", False),
         ("NW1300", "施工計畫備查資料表", "建管處網站下載", False),
@@ -100,7 +101,7 @@ def get_all_checklists():
         ("NW9900", "其他文件", "建築線指示圖、複丈成果圖、鑽探報告", False)
     ]
 
-    # 3. 放樣勘驗 (NS0100-NS9900) - 依據您提供的清單
+    # 3. 放樣勘驗 (NS0100-NS9900)
     list_ns = [
         ("NS0100", "建築工程勘驗申報書", "完整填註及用章", False),
         ("NS0200", "建築執照存根", "含變更設計", False),
@@ -187,24 +188,22 @@ def get_initial_sop():
 if "sop_data" not in st.session_state:
     st.session_state.sop_data = get_initial_sop()
 
-# 每次都重新取得 Checklists
 list_start, list_plan, list_ns = get_all_checklists()
 all_checklists_codes = [c[0] for c in list_start + list_plan + list_ns]
 
-# 檢查 nw_status
+# 確保所有 code 都在字典裡
 if "nw_status" not in st.session_state:
     st.session_state.nw_status = {code: False for code in all_checklists_codes}
 else:
-    # 健檢：補齊缺少的 code
     for code in all_checklists_codes:
         if code not in st.session_state.nw_status:
             st.session_state.nw_status[code] = False
 
-# 強制更新 SOP 內容 (讓參數計算生效)
+# 強制更新 SOP 內容
 st.session_state.sop_data = get_initial_sop()
 data = st.session_state.sop_data
 
-# --- 7. Callback 函數 ---
+# --- 7. Callback ---
 def toggle_status(stage_key, index):
     st.session_state.sop_data[stage_key][index]['done'] = not st.session_state.sop_data[stage_key][index]['done']
 
@@ -221,6 +220,7 @@ def render_stage_detailed(stage_key, is_locked=False):
         with st.container():
             col1, col2 = st.columns([0.5, 9.5])
             with col1:
+                # 解決 Duplicate ID 的關鍵：加上 key_suffix (stage_key)
                 st.checkbox("", value=item['done'], key=f"chk_{stage_key}_{i}", on_change=toggle_status, args=(stage_key, i), disabled=is_locked)
             with col2:
                 method = item.get('method', '現場')
@@ -240,15 +240,17 @@ def render_stage_detailed(stage_key, is_locked=False):
                     st.text_input("備註", value=item['note'], key=f"note_{stage_key}_{i}")
         st.divider()
 
-def render_checklist(checklist_data, title):
+def render_checklist(checklist_data, title, tab_name):
     with st.expander(f"📑 {title} (點擊展開檢查)", expanded=False):
         st.markdown(f'<div class="nw-header">請確認 PDF 檔案已備齊並完成用印/掃描：</div>', unsafe_allow_html=True)
         for code, name, note, demo_only in checklist_data:
             if demo_only and not is_demo_project: continue
             c1, c2, c3 = st.columns([0.5, 4, 5.5])
             
+            # [關鍵修正] 使用 tab_name 作為 key 的一部分，避免重複 ID 錯誤
+            # (例如 NW0500 在開工和計畫都有，加上後綴區分)
             is_checked = st.session_state.nw_status.get(code, False)
-            with c1: st.checkbox("", value=is_checked, key=f"chk_{code}", on_change=toggle_nw, args=(code,))
+            with c1: st.checkbox("", value=is_checked, key=f"chk_{code}_{tab_name}", on_change=toggle_nw, args=(code,))
             with c2: 
                 color_style = "color:#2E7D32; font-weight:bold;" if is_checked else ""
                 st.markdown(f"<span style='{color_style}'>{code} {name}</span>", unsafe_allow_html=True)
@@ -268,7 +270,7 @@ with tabs[1]:
     st.subheader("📋 階段一：開工申報 (含NW開工文件)")
     if not permit_unlocked: st.markdown('<div class="locked-stage">🔒 請先完成建照領取</div>', unsafe_allow_html=True)
     else:
-        render_checklist(list_start, "NW 開工文件準備檢查表")
+        render_checklist(list_start, "NW 開工文件準備檢查表", "start")
         st.markdown("---")
         st.markdown("### ✅ 正式申報流程")
         render_stage_detailed("stage_1", is_locked=False)
@@ -277,7 +279,7 @@ with tabs[2]:
     st.subheader("📘 階段二：施工計畫 (含NW計畫文件)")
     if not permit_unlocked: st.markdown('<div class="locked-stage">🔒 請先完成開工申報</div>', unsafe_allow_html=True)
     else:
-        render_checklist(list_plan, "NW 施工計畫文件準備檢查表")
+        render_checklist(list_plan, "NW 施工計畫文件準備檢查表", "plan")
         st.markdown("---")
         render_stage_detailed("stage_2", is_locked=False)
 
@@ -289,7 +291,7 @@ with tabs[4]:
     st.subheader("📐 階段四：放樣勘驗 (含NS勘驗文件)")
     if not permit_unlocked: st.markdown('<div class="locked-stage">🔒 請先完成施工計畫</div>', unsafe_allow_html=True)
     else:
-        render_checklist(list_ns, "NS 放樣勘驗文件準備檢查表")
+        render_checklist(list_ns, "NS 放樣勘驗文件準備檢查表", "survey")
         st.markdown("---")
         render_stage_detailed("stage_4", is_locked=False)
 
@@ -297,7 +299,6 @@ with tabs[4]:
 st.write("---")
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    # SOP Sheet
     all_rows = []
     for k, v in data.items():
         for item in v:
@@ -307,7 +308,6 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             all_rows.append(item_copy)
     pd.DataFrame(all_rows).to_excel(writer, index=False, sheet_name='SOP流程')
     
-    # Checklist Sheet
     all_checklists = []
     for lst, category in [(list_start, "開工NW"), (list_plan, "計畫NW"), (list_ns, "放樣NS")]:
         for code, name, note, demo_only in lst:
