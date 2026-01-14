@@ -6,13 +6,13 @@ from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (V15.0 情境防呆版)",
+    page_title="建案行政SOP系統 (V15.1 流暢版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 版本控制 (V15.0) ---
-CURRENT_VERSION = 15.0
+# --- 2. 🛡️ 版本控制 (V15.1) ---
+CURRENT_VERSION = 15.1
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
@@ -22,8 +22,7 @@ elif st.session_state.data_version != CURRENT_VERSION:
     st.session_state.data_version = CURRENT_VERSION
     st.rerun()
 
-# --- 3. 初始化特殊狀態 (從側邊欄移出的變數) ---
-# 這些變數現在只屬於"空污費"項目，所以預設存在 session_state 中
+# --- 3. 初始化特殊狀態 (空污費專用) ---
 special_flags = [
     "flag_slope", "flag_public", "flag_expired", 
     "flag_change", "flag_existing", "flag_demo_included"
@@ -43,6 +42,7 @@ st.markdown("""
     .tag-online { background-color: #e3f2fd; color: #0d47a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #90caf9; }
     .tag-paper { background-color: #efebe9; color: #5d4037; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4; }
     .tag-demo { background-color: #ffcdd2; color: #b71c1c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ef9a9a; }
+    .tag-struct { background-color: #e1bee7; color: #4a148c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ce93d8; }
     .critical-info {
         color: #d32f2f; font-size: 0.9em; font-weight: bold; margin-left: 25px; margin-bottom: 5px;
         background-color: #ffebee; padding: 2px 8px; border-radius: 4px; display: inline-block;
@@ -51,7 +51,6 @@ st.markdown("""
     .nw-header { background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #c8e6c9; margin-bottom: 10px; font-weight: bold; color: #2e7d32; }
     .check-header { background-color: #fff3e0; padding: 10px; border-radius: 5px; border: 1px solid #ffe0b2; margin-bottom: 10px; font-weight: bold; color: #e65100; }
     
-    /* 特殊情境區塊樣式 */
     .special-context {
         background-color: #f3e5f5; 
         padding: 15px; 
@@ -63,14 +62,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title(f"🏗️ 建案行政SOP系統 (Ver {CURRENT_VERSION})")
-st.caption("優化：空污費檢核條件移入該項目內，側邊欄保持清爽")
+st.caption("最新版：優化空污費操作流暢度 (移除頻繁重整)、完整收錄所有文件")
 
 # --- 4. 輔助函數 ---
 def generate_key(stage, item_name):
     raw_str = f"{stage}_{item_name}"
     return hashlib.md5(raw_str.encode()).hexdigest()[:10]
 
-# --- 5. 側邊欄：參數輸入 (只保留通用參數) ---
+# --- 5. 側邊欄：參數輸入 ---
 with st.sidebar:
     st.header("⚙️ 專案參數設定")
     project_type = st.radio("案件類型", ["素地新建案", "拆除併建造執照案"])
@@ -94,9 +93,9 @@ with st.sidebar:
             floors_below = st.number_input("地下層數", value=0)
         span_rc = st.number_input("RC最大跨距(m)", value=0.0)
         
-    # 通用性質 (影響多個階段的才放這裡)
     is_geo_sensitive = st.checkbox("位於地質敏感區", value=False)
-    
+    is_slope_land_param = st.checkbox("位於山坡地 (結構外審判斷用)", value=False) # 改名避免與空污費 flag 混淆
+
     # 邏輯判讀
     pollution_value = base_area * duration_month
     is_water_plan_needed = pollution_value >= 4600
@@ -109,6 +108,7 @@ with st.sidebar:
         excavation_depth > 12 or 
         floors_below > 3 or 
         span_rc > 12 or
+        is_slope_land_param or
         (is_geo_sensitive and (excavation_depth > 7 or floors_below > 1))
     )
     is_demo_review_needed = is_demo_project and floors_above > 10
@@ -120,7 +120,6 @@ with st.sidebar:
 
 # --- 6. 動態生成空污費詳細文字 (Helper) ---
 def get_air_pollution_context():
-    # 讀取 Session State 中的 Flag
     f_slope = st.session_state.flag_slope
     f_public = st.session_state.flag_public
     f_expired = st.session_state.flag_expired
@@ -171,9 +170,9 @@ def get_current_sop_data():
                 "dept": "環保局(空噪科)", 
                 "method": "線上", 
                 "timing": "【開工前】", 
-                "docs": "基本：申報書、建照影本", # 這裡只顯示基本，詳細在 Expander 內動態生成
+                "docs": "基本：申報書、建照影本 (點開下方檢核表看詳情)", 
                 "critical": b8_msg, 
-                "details": "DYNAMIC_CONTENT", # 標記為動態內容
+                "details": "DYNAMIC_CONTENT", 
                 "demo_only": False, "struct_only": False
             },
             {"item": "建照科行政驗收抽查", "dept": "建管處", "method": "臨櫃", "timing": "【開工申報前】", "docs": "1. 抽查紀錄表\n2. 缺失改善報告", "critical": "⚠️ 關鍵門檻：缺失修正後，方得辦理開工", "details": "單一拆照或拆併建照案必辦。", "demo_only": True, "struct_only": False},
@@ -218,8 +217,7 @@ def get_current_sop_data():
 
 # --- 8. 完整文件清單 (收錄所有重複項目) ---
 def get_all_checklists():
-    # 這裡省略重複代碼，保持原有的完整清單邏輯
-    # (與 V12.0 版本一致，確保 NW/NS 完整性)
+    # 1. 開工申報
     list_start = [
         ("NW0100", "建築工程開工申報書", "起造/建築/營造/技師/工地主任簽章", False),
         ("NW0200", "起造人名冊", "各起造人用起造章", False),
@@ -254,6 +252,8 @@ def get_all_checklists():
         ("NW3100", "開工展期文件", "若領照逾6個月", False),
         ("NW9900", "其他文件", "", False)
     ]
+    
+    # 2. 施工計畫
     list_plan = [
         ("NW0500", "建築執照", "掃描正本", False),
         ("NW1300", "施工計畫備查資料表", "建管處網站下載", False),
@@ -293,6 +293,8 @@ def get_all_checklists():
         ("NW6200", "逾期罰款繳款單據", "", False),
         ("NW9900", "其他文件", "建築線指示圖、複丈成果圖、鑽探報告", False)
     ]
+    
+    # 3. 放樣勘驗
     list_ns = [
         ("NS0100", "建築工程勘驗申報書", "完整填註及用章", False),
         ("NS0200", "建築執照存根", "含變更設計", False),
@@ -362,7 +364,6 @@ else:
 if "site_status" not in st.session_state:
     st.session_state.site_status = {item[0]: False for item in get_site_audit_list()}
 
-# 強制更新 SOP 內容
 st.session_state.sop_data = get_current_sop_data()
 data = st.session_state.sop_data
 
@@ -410,27 +411,27 @@ def render_stage_detailed(stage_key, is_locked=False):
                 
                 if item.get("critical"): st.markdown(f"<div class='critical-info'>{item['critical']}</div>", unsafe_allow_html=True)
 
-                # 特殊處理：空污費的動態檢核區塊
+                # 空污費特殊區塊 (V15.1 優化版)
                 if item['item'] == "空氣污染防制費申報":
                     with st.expander("🔽 詳細指引與檢核 (含特殊案件勾選)", expanded=False):
                         st.markdown("""
                         <div class='special-context'>
-                        <b>🚩 特殊案件條件勾選 (請依實際狀況勾選以顯示應備文件)：</b><br>
+                        <b>🚩 特殊案件條件勾選 (系統將自動更新下方清單)：</b><br>
                         """, unsafe_allow_html=True)
                         
+                        # [優化] 改用 key 綁定，移除 st.rerun() 以減少卡頓
                         c1, c2 = st.columns(2)
                         with c1:
-                            if st.checkbox("位於山坡地基地", key="flag_slope"): st.rerun()
-                            if st.checkbox("屬工程契約型 (公務)", key="flag_public"): st.rerun()
-                            if st.checkbox("領取建照逾 6 個月", key="flag_expired"): st.rerun()
+                            st.checkbox("位於山坡地基地", key="flag_slope")
+                            st.checkbox("屬工程契約型 (公務)", key="flag_public")
+                            st.checkbox("領取建照逾 6 個月", key="flag_expired")
                         with c2:
-                            if st.checkbox("曾變更起造人/承造人", key="flag_change"): st.rerun()
-                            if st.checkbox("基地已有建物 (如學校)", key="flag_existing"): st.rerun()
-                            if st.checkbox("屬建照列管拆照者", key="flag_demo_included"): st.rerun()
+                            st.checkbox("曾變更起造人/承造人", key="flag_change")
+                            st.checkbox("基地已有建物 (如學校)", key="flag_existing")
+                            st.checkbox("屬建照列管拆照者", key="flag_demo_included")
                         
                         st.markdown("</div>", unsafe_allow_html=True)
                         
-                        # 動態取得更新後的文字
                         dynamic_details = get_air_pollution_context()
                         
                         st.markdown(f"**🕒 時機：** {item['timing']}")
@@ -441,7 +442,6 @@ def render_stage_detailed(stage_key, is_locked=False):
                         
                         st.text_input("備註", key=note_key)
                 
-                # 一般項目的渲染
                 else:
                     with st.expander("🔽 詳細指引與備註", expanded=False):
                         st.markdown(f"**🕒 時機：** {item['timing']}")
