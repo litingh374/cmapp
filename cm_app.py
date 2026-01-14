@@ -1,18 +1,18 @@
 import streamlit as st
 import pandas as pd
-import io  # [修正] 補上這個必要的套件
+import io
 from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (最終修復版)",
+    page_title="建案行政SOP系統 (V6.0 穩定版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 版本控制與強制重置 ---
-# 只要這個數字改變，使用者的瀏覽器暫存就會被強制清空，解決所有新舊資料衝突
-CURRENT_VERSION = 5.2
+# --- 2. 🛡️ 版本控制 (V6.0) ---
+# 升級版本號，強制清洗瀏覽器舊緩存，解決所有報錯與卡死問題
+CURRENT_VERSION = 6.0
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
@@ -22,29 +22,37 @@ elif st.session_state.data_version != CURRENT_VERSION:
     st.session_state.data_version = CURRENT_VERSION
     st.rerun()
 
-# --- CSS 美化 ---
+# --- CSS 優化 ---
 st.markdown("""
 <style>
+    /* 勾選框強制綠色 */
     div[data-testid="stCheckbox"] label span[data-checked="true"] {
         background-color: #2E7D32 !important;
         border-color: #2E7D32 !important;
     }
     .stProgress > div > div > div > div { background-color: #2E7D32; }
+    
+    /* 標籤樣式 */
     .tag-online { background-color: #e3f2fd; color: #0d47a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #90caf9; }
     .tag-paper { background-color: #efebe9; color: #5d4037; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4; }
     .tag-demo { background-color: #ffcdd2; color: #b71c1c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ef9a9a; }
+
+    /* 關鍵警語 */
     .critical-info {
         color: #d32f2f; font-size: 0.9em; font-weight: bold; margin-left: 25px; margin-bottom: 5px;
         background-color: #ffebee; padding: 2px 8px; border-radius: 4px; display: inline-block;
     }
+    
+    /* 資訊框 */
     .info-box { background-color: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 5px solid #6c757d; font-size: 0.9em; margin-bottom: 5px; }
     .nw-header { background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #c8e6c9; margin-bottom: 10px; font-weight: bold; color: #2e7d32; }
+    
     div[data-testid="stExpander"] { margin-top: -5px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏗️ 建案開工至放樣 SOP 控管系統 (最終修復版)")
-st.caption("已修復：重複文件報錯問題、解鎖邏輯、Excel下載功能")
+st.title(f"🏗️ 建案開工至放樣 SOP 控管系統 (V{CURRENT_VERSION})")
+st.caption("修復重點：解決開工階段無法解鎖問題、文件編碼重複報錯問題")
 
 # --- 3. 定義完整文件清單 (資料庫) ---
 def get_all_checklists():
@@ -71,7 +79,7 @@ def get_all_checklists():
         ("NW2900", "塔式起重機自主檢查表", "無則附切結書", False)
     ]
     
-    # 2. 施工計畫 (NW3200-NW9900) - 包含重複的 NW0500 等
+    # 2. 施工計畫 (NW3200-NW9900)
     list_plan = [
         ("NW0500", "建築執照", "掃描正本", False),
         ("NW1300", "施工計畫備查資料表", "建管處網站下載", False),
@@ -147,7 +155,7 @@ with st.sidebar:
     is_external_review_needed = (excavation_depth > 12 or building_height > 50 or base_area > 3000)
     
     st.divider()
-    if st.button("🔄 強制重置 (修復錯誤)"):
+    if st.button("🔄 強制重置 (資料清空)"):
         st.session_state.clear()
         st.rerun()
 
@@ -191,7 +199,7 @@ if "sop_data" not in st.session_state:
 list_start, list_plan, list_ns = get_all_checklists()
 all_checklists_codes = [c[0] for c in list_start + list_plan + list_ns]
 
-# 確保所有 code 都在字典裡
+# 檢查 nw_status 完整性
 if "nw_status" not in st.session_state:
     st.session_state.nw_status = {code: False for code in all_checklists_codes}
 else:
@@ -203,33 +211,48 @@ else:
 st.session_state.sop_data = get_initial_sop()
 data = st.session_state.sop_data
 
-# --- 7. Callback ---
+# --- 7. Callback 函數 (修復解鎖問題) ---
 def toggle_status(stage_key, index):
-    st.session_state.sop_data[stage_key][index]['done'] = not st.session_state.sop_data[stage_key][index]['done']
+    # 直接切換狀態
+    current = st.session_state.sop_data[stage_key][index]['done']
+    st.session_state.sop_data[stage_key][index]['done'] = not current
 
 def toggle_nw(code):
-    st.session_state.nw_status[code] = not st.session_state.nw_status[code]
+    current = st.session_state.nw_status.get(code, False)
+    st.session_state.nw_status[code] = not current
 
-# --- 8. 渲染函數 ---
+# --- 8. 渲染函數 (解決無法解鎖的關鍵：即時刷新) ---
 def render_stage_detailed(stage_key, is_locked=False):
     stage_items = data[stage_key]
-    if is_locked: st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
-
+    if is_locked: 
+        st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
+    
     for i, item in enumerate(stage_items):
         if item.get("demo_only") and not is_demo_project: continue
+        
         with st.container():
             col1, col2 = st.columns([0.5, 9.5])
             with col1:
-                # 解決 Duplicate ID 的關鍵：加上 key_suffix (stage_key)
-                st.checkbox("", value=item['done'], key=f"chk_{stage_key}_{i}", on_change=toggle_status, args=(stage_key, i), disabled=is_locked)
+                # [關鍵修正] 使用 st.checkbox 的返回值直接判斷是否需要更新
+                # 不使用 on_change，改用直接邏輯，避免狀態不同步
+                is_checked = st.checkbox("", value=item['done'], key=f"chk_{stage_key}_{i}", disabled=is_locked)
+                
+                # 如果使用者點擊了，狀態會改變，這時我們手動更新 session_state 並 rerun
+                if is_checked != item['done']:
+                    item['done'] = is_checked
+                    st.rerun() # 強制刷新，讓下一階段的解鎖邏輯立即生效
+
             with col2:
                 method = item.get('method', '現場')
                 method_tag = f'<span class="tag-online">🔵 線上</span>' if method == "線上" else f'<span class="tag-paper">🟤 {method}</span>'
                 demo_tag = '<span class="tag-demo">🏗️ 拆除專項</span>' if item.get("demo_only") else ""
                 
                 title_html = f"**{item['item']}** {method_tag} {demo_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
-                if item['done']: st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
-                else: st.markdown(title_html, unsafe_allow_html=True)
+                
+                if item['done']: 
+                    st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
+                else: 
+                    st.markdown(title_html, unsafe_allow_html=True)
                 
                 if item.get("critical"): st.markdown(f"<div class='critical-info'>{item['critical']}</div>", unsafe_allow_html=True)
 
@@ -247,18 +270,30 @@ def render_checklist(checklist_data, title, tab_name):
             if demo_only and not is_demo_project: continue
             c1, c2, c3 = st.columns([0.5, 4, 5.5])
             
-            # [關鍵修正] 使用 tab_name 作為 key 的一部分，避免重複 ID 錯誤
-            # (例如 NW0500 在開工和計畫都有，加上後綴區分)
             is_checked = st.session_state.nw_status.get(code, False)
-            with c1: st.checkbox("", value=is_checked, key=f"chk_{code}_{tab_name}", on_change=toggle_nw, args=(code,))
+            # 使用 key suffix 防止重複 ID
+            new_checked = st.checkbox("", value=is_checked, key=f"chk_{code}_{tab_name}")
+            
+            if new_checked != is_checked:
+                st.session_state.nw_status[code] = new_checked
+                st.rerun()
+
             with c2: 
                 color_style = "color:#2E7D32; font-weight:bold;" if is_checked else ""
                 st.markdown(f"<span style='{color_style}'>{code} {name}</span>", unsafe_allow_html=True)
             with c3: st.caption(f"🖊️ {note}")
 
-# --- 9. 主流程 ---
-s0_done = all(item['done'] for item in data['stage_0'])
-permit_unlocked = s0_done
+# --- 9. 主流程 (解鎖邏輯修正) ---
+# 計算各階段完成度 (考慮 demo_only 過濾)
+def is_stage_complete(stage_key):
+    for item in data[stage_key]:
+        if item.get("demo_only") and not is_demo_project: continue
+        if not item['done']: return False
+    return True
+
+s0_done = is_stage_complete('stage_0')
+s1_done = is_stage_complete('stage_1')
+s2_done = is_stage_complete('stage_2')
 
 tabs = st.tabs(["0.建照領取", "1.開工申報(NW)", "2.施工計畫(NW)", "3.導溝勘驗", "4.放樣勘驗(NS)"])
 
@@ -268,7 +303,8 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("📋 階段一：開工申報 (含NW開工文件)")
-    if not permit_unlocked: st.markdown('<div class="locked-stage">🔒 請先完成建照領取</div>', unsafe_allow_html=True)
+    if not s0_done: 
+        st.markdown('<div class="locked-stage">🔒 請先完成建照領取</div>', unsafe_allow_html=True)
     else:
         render_checklist(list_start, "NW 開工文件準備檢查表", "start")
         st.markdown("---")
@@ -277,7 +313,8 @@ with tabs[1]:
 
 with tabs[2]:
     st.subheader("📘 階段二：施工計畫 (含NW計畫文件)")
-    if not permit_unlocked: st.markdown('<div class="locked-stage">🔒 請先完成開工申報</div>', unsafe_allow_html=True)
+    if not (s0_done and s1_done): 
+        st.markdown('<div class="locked-stage">🔒 請先完成開工申報</div>', unsafe_allow_html=True)
     else:
         render_checklist(list_plan, "NW 施工計畫文件準備檢查表", "plan")
         st.markdown("---")
@@ -285,11 +322,13 @@ with tabs[2]:
 
 with tabs[3]:
     st.subheader("🚧 階段三：導溝勘驗")
-    render_stage_detailed("stage_3", is_locked=not permit_unlocked)
+    # 導溝通常在施工計畫核定後即可進行
+    render_stage_detailed("stage_3", is_locked=not (s0_done and s1_done and s2_done))
 
 with tabs[4]:
     st.subheader("📐 階段四：放樣勘驗 (含NS勘驗文件)")
-    if not permit_unlocked: st.markdown('<div class="locked-stage">🔒 請先完成施工計畫</div>', unsafe_allow_html=True)
+    if not (s0_done and s1_done and s2_done): 
+        st.markdown('<div class="locked-stage">🔒 請先完成施工計畫</div>', unsafe_allow_html=True)
     else:
         render_checklist(list_ns, "NS 放樣勘驗文件準備檢查表", "survey")
         st.markdown("---")
@@ -316,4 +355,4 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             all_checklists.append({"類別": category, "編號": code, "名稱": name, "備註": note, "狀態": status})
     pd.DataFrame(all_checklists).to_excel(writer, index=False, sheet_name='文件檢查表')
 
-st.download_button("📥 下載完整 Excel", buffer.getvalue(), f"SOP_Full_{date.today()}.xlsx", "application/vnd.ms-excel")
+st.download_button("📥 下載完整 Excel", buffer.getvalue(), f"SOP_Full_V{CURRENT_VERSION}_{date.today()}.xlsx", "application/vnd.ms-excel")
