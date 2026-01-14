@@ -13,7 +13,7 @@ st.set_page_config(
 # --- CSS 優化 (綠色勾選 + 線上申辦標籤) ---
 st.markdown("""
 <style>
-    /* 勾選框優化 */
+    /* 勾選框優化：強制綠色 */
     div[data-testid="stCheckbox"] label span[data-checked="true"] {
         background-color: #2E7D32 !important;
         border-color: #2E7D32 !important;
@@ -29,7 +29,6 @@ st.markdown("""
         background-color: #efebe9; color: #5d4037; padding: 2px 8px; 
         border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4;
     }
-
     /* 資訊框 */
     .info-box {
         background-color: #f8f9fa; padding: 10px; border-radius: 5px; 
@@ -39,12 +38,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🏗️ 建案開工至放樣 SOP 控管系統 (含無紙化流程)")
-st.caption("依據：申辦開工、計劃、放樣用清冊 (終極版) 邏輯 ｜ 整合各縣市無紙化作業規定")
 
-# --- 2. 核心資料庫 (擴充版) ---
+# --- 2. 核心資料庫 (擴充版：包含 Stage 0 的詳細流程) ---
 def get_initial_sop():
     return {
-        "stage_0": [ # 建照領取階段 (大幅擴充)
+        "stage_0": [ # 建照領取階段 (依據您的需求大幅擴充)
             {
                 "item": "土地與建物權利證明確認", 
                 "dept": "業主/地政", 
@@ -119,17 +117,25 @@ def get_initial_sop():
             {"item": "施工計畫書審查", "dept": "建管處", "method": "線上", "timing": "【放樣前】", "docs": "1. 施工計畫書 PDF", "details": "特殊結構需外審。一般案件可線上上傳核備。", "done": False, "note": ""},
             {"item": "職業安全衛生計畫", "dept": "勞檢處", "method": "線上", "timing": "【開工前】", "docs": "1. 安衛計畫", "details": "危評案件需至職安署網站登錄。", "done": False, "note": ""}
         ],
-        "stage_3": [ # 導溝與放樣 (勘驗多為線上預約+現場)
+        "stage_3": [ # 導溝與放樣
             {"item": "導溝勘驗申報", "dept": "建管處", "method": "線上", "timing": "【計畫核定後】", "docs": "1. 勘驗申請書\n2. 照片", "details": "透過 APP 或網站申報勘驗。", "done": False, "note": ""},
             {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構前】", "docs": "1. 測量報告", "details": "需技師電子簽證。", "done": False, "note": ""}
         ],
-        "stage_4": [ # 現場準備 (依清冊邏輯)
+        "stage_4": [ # 現場準備
              {"item": "基地鑑界 (複丈)", "dept": "地政事務所", "method": "臨櫃", "timing": "【放樣前】", "docs": "1. 複丈申請書", "details": "確認界址點。", "done": False, "note": ""},
              {"item": "施工圍籬架設", "dept": "工地", "method": "現場", "timing": "【開工時】", "docs": "1. 綠美化照片", "details": "需符合圍籬美化規範。", "done": False, "note": ""}
         ]
     }
 
-# --- 3. 初始化 Session State ---
+# --- 3. 🛡️ 自動修復機制 (防止報錯) ---
+# 邏輯：如果 session_state 裡有舊資料 (stage_0 只有 1 筆)，強制更新為新版 (7 筆)
+if "sop_data" in st.session_state:
+    if len(st.session_state.sop_data.get("stage_0", [])) < 2:
+        st.warning("⚠️ 系統偵測到資料版本過舊，正在為您更新為「無紙化流程」...")
+        st.session_state.sop_data = get_initial_sop()
+        st.rerun() # 立即重新整理，防止後續程式碼報錯
+
+# 初始化
 if "sop_data" not in st.session_state:
     st.session_state.sop_data = get_initial_sop()
 
@@ -150,12 +156,17 @@ with st.sidebar:
     # 計算建照領取進度
     s0_total = len(data['stage_0'])
     s0_done = sum(1 for item in data['stage_0'] if item['done'])
+    
+    # 判斷是否解鎖 (所有 stage_0 完成)
     permit_unlocked = (s0_done == s0_total)
     
     if permit_unlocked:
         st.success("✅ 建照領取：全部完成")
     else:
         st.warning(f"⚠️ 建照領取：{s0_done}/{s0_total}")
+    
+    if permit_unlocked:
+        st.info("🔓 後續流程已解鎖")
 
     st.divider()
     if st.button("🔄 重置所有進度"):
@@ -186,21 +197,24 @@ def render_stage_detailed(stage_key, is_locked=False):
             
             # 內容顯示
             with col2:
-                # 判斷標籤顏色
+                # 取得申辦方式 (安全讀取，防止無此欄位時報錯)
+                method = item.get('method', '現場')
                 method_tag = ""
-                if item.get('method') == "線上":
+                
+                # 設定標籤顏色
+                if method == "線上":
                     method_tag = '<span class="tag-online">🔵 線上申辦</span>'
-                elif item.get('method') == "紙本" or item.get('method') == "臨櫃":
+                elif method in ["紙本", "臨櫃"]:
                     method_tag = '<span class="tag-paper">🟤 紙本/臨櫃</span>'
                 else:
-                    method_tag = f'<span class="tag-paper">{item.get("method", "現場")}</span>'
+                    method_tag = f'<span class="tag-paper">{method}</span>'
 
+                # 標題 HTML
                 title_html = f"**{item['item']}** {method_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
                 
-                with st.expander(f"詳細資訊", expanded=False):
-                    # 這裡用 markdown 渲染 HTML 標題
+                # 詳細資訊區
+                with st.expander("詳細資訊", expanded=False):
                     st.markdown(title_html, unsafe_allow_html=True) 
-                    
                     st.markdown(f"**🕒 時機：** {item['timing']}")
                     st.markdown(f"**📄 應備文件：**\n{item['docs']}")
                     if item['details']:
@@ -210,11 +224,10 @@ def render_stage_detailed(stage_key, is_locked=False):
                     new_note = st.text_input("備註", value=item['note'], key=f"note_{stage_key}_{i}")
                     st.session_state.sop_data[stage_key][i]['note'] = new_note
 
-                # 在 Expander 外面顯示簡潔標題 (方便快速瀏覽)
+                # 外部標題 (未完成顯示黑色，完成顯示綠色)
                 if not item['done']:
                     st.markdown(title_html, unsafe_allow_html=True)
                 else:
-                    # 完成後變淡並顯示標題
                     st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
 
         st.divider()
@@ -231,7 +244,7 @@ if permit_unlocked and s1_done: current += 1
 if current >= 2 and s2_done: current += 1
 if current >= 3 and all(i['done'] for i in data['stage_3']): current += 1
 
-st.progress(current/5, text=f"專案總進度")
+st.progress(current/5, text=f"專案總進度 (目前解鎖階段: {current})")
 
 tabs = st.tabs(["0.建照領取 (無紙化)", "1.開工申報", "2.施工計畫", "3.導溝勘驗", "4.放樣勘驗"])
 
@@ -266,7 +279,10 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             item_copy['階段代號'] = k
             all_rows.append(item_copy)
     df_export = pd.DataFrame(all_rows)
-    df_export = df_export[["階段代號", "item", "method", "dept", "timing", "docs", "details", "done", "note"]]
+    # 使用 .get 避免報錯
+    df_export['申辦方式'] = df_export.apply(lambda x: x.get('method', '現場'), axis=1)
+    
+    df_export = df_export[["階段代號", "item", "申辦方式", "dept", "timing", "docs", "details", "done", "note"]]
     df_export.columns = ["階段", "項目", "申辦方式", "單位", "時限", "文件", "指引", "完成", "備註"]
     df_export.to_excel(writer, index=False, sheet_name='SOP詳表')
 
