@@ -1,48 +1,51 @@
 import streamlit as st
 import pandas as pd
-import io
 from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (全流程旗艦版)",
+    page_title="建案行政SOP系統 (全功能旗艦版)",
     page_icon="🏗️",
     layout="wide"
 )
 
+# --- 2. 🛡️ 強制修復機制 (防止報錯的核心) ---
+# 設定資料版本號，只要改動資料結構，就升級版本號，強制重置使用者的暫存
+CURRENT_VERSION = 3.1 
+
+if "data_version" not in st.session_state:
+    st.session_state.clear()
+    st.session_state.data_version = CURRENT_VERSION
+elif st.session_state.data_version != CURRENT_VERSION:
+    st.session_state.clear() # 版本不同，清除所有舊資料防止報錯
+    st.session_state.data_version = CURRENT_VERSION
+    st.rerun() # 重新整理頁面
+
 # --- CSS 優化 ---
 st.markdown("""
 <style>
-    /* 勾選框強制綠色 */
     div[data-testid="stCheckbox"] label span[data-checked="true"] {
         background-color: #2E7D32 !important;
         border-color: #2E7D32 !important;
     }
     .stProgress > div > div > div > div { background-color: #2E7D32; }
-    
-    /* 標籤樣式 */
     .tag-online { background-color: #e3f2fd; color: #0d47a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #90caf9; }
     .tag-paper { background-color: #efebe9; color: #5d4037; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4; }
     .tag-demo { background-color: #ffcdd2; color: #b71c1c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ef9a9a; }
-
-    /* 關鍵警語 */
     .critical-info {
         color: #d32f2f; font-size: 0.9em; font-weight: bold; margin-left: 25px; margin-bottom: 5px;
         background-color: #ffebee; padding: 2px 8px; border-radius: 4px; display: inline-block;
     }
-    
-    /* 資訊框 */
     .info-box { background-color: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 5px solid #6c757d; font-size: 0.9em; margin-bottom: 5px; }
     .nw-header { background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #c8e6c9; margin-bottom: 10px; font-weight: bold; color: #2e7d32; }
-    
     div[data-testid="stExpander"] { margin-top: -5px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏗️ 建案開工至放樣 SOP 控管系統 (全流程旗艦版)")
-st.caption("整合：開工NW清單、施工計畫圖說規定(A3/A4)、放樣NS申報編碼")
+st.title("🏗️ 建案開工至放樣 SOP 控管系統 (全功能旗艦版)")
+st.caption("已整合：開工NW文件、施工計畫A3圖說規定、放樣NS申報編碼")
 
-# --- 2. 定義三大階段文件清單 (資料庫) ---
+# --- 3. 定義完整文件清單 (資料庫) ---
 def get_all_checklists():
     # 1. 開工申報 (NW0100-NW3100)
     list_start = [
@@ -67,7 +70,7 @@ def get_all_checklists():
         ("NW2900", "塔式起重機自主檢查表", "無則附切結書", False)
     ]
     
-    # 2. 施工計畫 (NW3200-NW9900) - 依據您提供的詳細資料更新
+    # 2. 施工計畫 (NW3200-NW9900) - 依據您提供的詳細資料
     list_plan = [
         ("NW0500", "建築執照", "掃描正本", False),
         ("NW1300", "施工計畫備查資料表", "建管處網站下載", False),
@@ -82,7 +85,6 @@ def get_all_checklists():
         ("NW3900", "公共管線查線函", "五大管線回函 (5樓/2000m²以下免附)", False),
         ("NW4000", "緊急應變計畫", "含緊急聯絡名冊", False),
         ("NW4200", "工程材料品質管理計畫", "併檢附結構材料強度圖說", False),
-        ("NW4300", "運送憑證應辦事項及聯單管制", "", False),
         ("NW4700", "鷹架/圍籬/大門大樣圖", "建築師/營造廠/技師用章", False),
         ("NW4800", "平面安全設施配置圖", "繪於建照核准圖", False),
         ("NW4900", "四向立面安全設施配置圖", "繪於建照核准圖(含鷹架/護網/帆布)", False),
@@ -97,7 +99,7 @@ def get_all_checklists():
         ("NW9900", "其他文件", "建築線指示圖、複丈成果圖、鑽探報告", False)
     ]
 
-    # 3. 放樣勘驗 (NS0100-NS9900) - 依據您提供的清單更新
+    # 3. 放樣勘驗 (NS0100-NS9900) - 依據您提供的清單
     list_ns = [
         ("NS0100", "建築工程勘驗申報書", "完整填註及用章", False),
         ("NS0200", "建築執照存根", "含變更設計", False),
@@ -120,7 +122,7 @@ def get_all_checklists():
     ]
     return list_start, list_plan, list_ns
 
-# --- 3. 側邊欄：參數輸入 ---
+# --- 4. 側邊欄：參數輸入 ---
 with st.sidebar:
     st.header("⚙️ 專案參數設定")
     project_type = st.radio("案件類型", ["素地新建案", "拆除併建造執照案"])
@@ -147,7 +149,7 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-# --- 4. 核心 SOP 資料庫 ---
+# --- 5. 核心 SOP 資料庫 ---
 def get_initial_sop():
     water_msg = f"⚠️ 數值 {pollution_value} (達4600門檻) 需辦理" if is_water_plan_needed else "✅ 免辦理"
     traffic_msg = "⚠️ 強制辦理 (面積>10000m²)" if is_traffic_plan_needed else ""
@@ -180,33 +182,37 @@ def get_initial_sop():
         ]
     }
 
-# --- 5. 初始化與自動修復 (防止報錯的關鍵) ---
-# 1. 取得最新資料
-new_sop_data = get_initial_sop()
+# --- 6. 初始化與自動修復 (防止報錯的關鍵) ---
+if "sop_data" not in st.session_state:
+    st.session_state.sop_data = get_initial_sop()
+
+# 每次都重新取得最新的 Checklists，確保編碼是最新的
 list_start, list_plan, list_ns = get_all_checklists()
 all_checklists_codes = [c[0] for c in list_start + list_plan + list_ns]
 
-# 2. 檢查 Session State 是否存在或過舊
-if "sop_data" not in st.session_state or "nw_status" not in st.session_state:
-    st.session_state.sop_data = new_sop_data
+# 檢查是否所有的 Code 都已經在 nw_status 字典裡
+if "nw_status" not in st.session_state:
     st.session_state.nw_status = {code: False for code in all_checklists_codes}
 else:
-    # 3. 健檢：檢查新加入的 NS0100 鍵值是否存在，若不存在代表是舊資料，強制更新
-    if "NS0100" not in st.session_state.nw_status:
-        st.session_state.sop_data = new_sop_data
-        st.session_state.nw_status = {code: False for code in all_checklists_codes}
-        st.rerun() # 立即刷新頁面
+    # 健檢：如果有缺的 code，補上去 (防止 KeyError)
+    for code in all_checklists_codes:
+        if code not in st.session_state.nw_status:
+            st.session_state.nw_status[code] = False
 
+# 強制更新內容 (讓參數計算生效)
+st.session_state.sop_data = get_initial_sop()
 data = st.session_state.sop_data
 
-# --- 6. Callback 函數 ---
+# --- 7. Callback 函數 (安全存取) ---
 def toggle_status(stage_key, index):
     st.session_state.sop_data[stage_key][index]['done'] = not st.session_state.sop_data[stage_key][index]['done']
 
 def toggle_nw(code):
-    st.session_state.nw_status[code] = not st.session_state.nw_status[code]
+    # 安全存取，如果沒有就預設 False
+    current = st.session_state.nw_status.get(code, False)
+    st.session_state.nw_status[code] = not current
 
-# --- 7. 渲染函數 ---
+# --- 8. 渲染函數 ---
 def render_stage_detailed(stage_key, is_locked=False):
     stage_items = data[stage_key]
     if is_locked: st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
@@ -241,13 +247,17 @@ def render_checklist(checklist_data, title):
         for code, name, note, demo_only in checklist_data:
             if demo_only and not is_demo_project: continue
             c1, c2, c3 = st.columns([0.5, 4, 5.5])
-            with c1: st.checkbox("", value=st.session_state.nw_status.get(code, False), key=f"chk_{code}", on_change=toggle_nw, args=(code,))
+            
+            # 安全讀取狀態，避免 Key Error
+            is_checked = st.session_state.nw_status.get(code, False)
+            
+            with c1: st.checkbox("", value=is_checked, key=f"chk_{code}", on_change=toggle_nw, args=(code,))
             with c2: 
-                color_style = "color:#2E7D32; font-weight:bold;" if st.session_state.nw_status.get(code, False) else ""
+                color_style = "color:#2E7D32; font-weight:bold;" if is_checked else ""
                 st.markdown(f"<span style='{color_style}'>{code} {name}</span>", unsafe_allow_html=True)
             with c3: st.caption(f"🖊️ {note}")
 
-# --- 8. 主流程 ---
+# --- 9. 主流程 ---
 s0_done = all(item['done'] for item in data['stage_0'])
 permit_unlocked = s0_done
 
@@ -286,7 +296,7 @@ with tabs[4]:
         st.markdown("---")
         render_stage_detailed("stage_4", is_locked=False)
 
-# --- 9. Excel 下載 ---
+# --- 10. Excel 下載 ---
 st.write("---")
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -300,12 +310,14 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             all_rows.append(item_copy)
     pd.DataFrame(all_rows).to_excel(writer, index=False, sheet_name='SOP流程')
     
-    # Checklist Sheet (合併所有清單)
+    # Checklist Sheet
     all_checklists = []
     for lst, category in [(list_start, "開工NW"), (list_plan, "計畫NW"), (list_ns, "放樣NS")]:
         for code, name, note, demo_only in lst:
             if demo_only and not is_demo_project: continue
-            all_checklists.append({"類別": category, "編號": code, "名稱": name, "備註": note, "狀態": "完成" if st.session_state.nw_status.get(code) else "未完成"})
+            # 安全讀取狀態
+            status = "完成" if st.session_state.nw_status.get(code, False) else "未完成"
+            all_checklists.append({"類別": category, "編號": code, "名稱": name, "備註": note, "狀態": status})
     pd.DataFrame(all_checklists).to_excel(writer, index=False, sheet_name='文件檢查表')
 
 st.download_button("📥 下載完整 Excel", buffer.getvalue(), f"SOP_Full_{date.today()}.xlsx", "application/vnd.ms-excel")
