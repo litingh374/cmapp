@@ -4,14 +4,14 @@ from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (全功能旗艦版)",
+    page_title="建案行政SOP系統 (全流程旗艦版)",
     page_icon="🏗️",
     layout="wide"
 )
 
 # --- 2. 🛡️ 強制修復機制 (防止報錯的核心) ---
 # 設定資料版本號，只要改動資料結構，就升級版本號，強制重置使用者的暫存
-CURRENT_VERSION = 3.1 
+CURRENT_VERSION = 4.0
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
@@ -42,8 +42,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏗️ 建案開工至放樣 SOP 控管系統 (全功能旗艦版)")
-st.caption("已整合：開工NW文件、施工計畫A3圖說規定、放樣NS申報編碼")
+st.title("🏗️ 建案開工至放樣 SOP 控管系統 (全流程旗艦版)")
+st.caption("整合：開工NW清單、施工計畫圖說規定(A3/A4)、放樣NS申報編碼")
 
 # --- 3. 定義完整文件清單 (資料庫) ---
 def get_all_checklists():
@@ -85,6 +85,7 @@ def get_all_checklists():
         ("NW3900", "公共管線查線函", "五大管線回函 (5樓/2000m²以下免附)", False),
         ("NW4000", "緊急應變計畫", "含緊急聯絡名冊", False),
         ("NW4200", "工程材料品質管理計畫", "併檢附結構材料強度圖說", False),
+        ("NW4300", "運送憑證應辦事項及聯單管制", "", False),
         ("NW4700", "鷹架/圍籬/大門大樣圖", "建築師/營造廠/技師用章", False),
         ("NW4800", "平面安全設施配置圖", "繪於建照核准圖", False),
         ("NW4900", "四向立面安全設施配置圖", "繪於建照核准圖(含鷹架/護網/帆布)", False),
@@ -182,35 +183,33 @@ def get_initial_sop():
         ]
     }
 
-# --- 6. 初始化與自動修復 (防止報錯的關鍵) ---
+# --- 6. 初始化 ---
 if "sop_data" not in st.session_state:
     st.session_state.sop_data = get_initial_sop()
 
-# 每次都重新取得最新的 Checklists，確保編碼是最新的
+# 每次都重新取得 Checklists
 list_start, list_plan, list_ns = get_all_checklists()
 all_checklists_codes = [c[0] for c in list_start + list_plan + list_ns]
 
-# 檢查是否所有的 Code 都已經在 nw_status 字典裡
+# 檢查 nw_status
 if "nw_status" not in st.session_state:
     st.session_state.nw_status = {code: False for code in all_checklists_codes}
 else:
-    # 健檢：如果有缺的 code，補上去 (防止 KeyError)
+    # 健檢：補齊缺少的 code
     for code in all_checklists_codes:
         if code not in st.session_state.nw_status:
             st.session_state.nw_status[code] = False
 
-# 強制更新內容 (讓參數計算生效)
+# 強制更新 SOP 內容 (讓參數計算生效)
 st.session_state.sop_data = get_initial_sop()
 data = st.session_state.sop_data
 
-# --- 7. Callback 函數 (安全存取) ---
+# --- 7. Callback 函數 ---
 def toggle_status(stage_key, index):
     st.session_state.sop_data[stage_key][index]['done'] = not st.session_state.sop_data[stage_key][index]['done']
 
 def toggle_nw(code):
-    # 安全存取，如果沒有就預設 False
-    current = st.session_state.nw_status.get(code, False)
-    st.session_state.nw_status[code] = not current
+    st.session_state.nw_status[code] = not st.session_state.nw_status[code]
 
 # --- 8. 渲染函數 ---
 def render_stage_detailed(stage_key, is_locked=False):
@@ -248,9 +247,7 @@ def render_checklist(checklist_data, title):
             if demo_only and not is_demo_project: continue
             c1, c2, c3 = st.columns([0.5, 4, 5.5])
             
-            # 安全讀取狀態，避免 Key Error
             is_checked = st.session_state.nw_status.get(code, False)
-            
             with c1: st.checkbox("", value=is_checked, key=f"chk_{code}", on_change=toggle_nw, args=(code,))
             with c2: 
                 color_style = "color:#2E7D32; font-weight:bold;" if is_checked else ""
@@ -315,7 +312,6 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
     for lst, category in [(list_start, "開工NW"), (list_plan, "計畫NW"), (list_ns, "放樣NS")]:
         for code, name, note, demo_only in lst:
             if demo_only and not is_demo_project: continue
-            # 安全讀取狀態
             status = "完成" if st.session_state.nw_status.get(code, False) else "未完成"
             all_checklists.append({"類別": category, "編號": code, "名稱": name, "備註": note, "狀態": status})
     pd.DataFrame(all_checklists).to_excel(writer, index=False, sheet_name='文件檢查表')
