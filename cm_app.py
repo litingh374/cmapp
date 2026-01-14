@@ -1,19 +1,17 @@
 import streamlit as st
 import pandas as pd
-import io
 from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (V7.0)",
+    page_title="建案行政SOP系統 (V8.0 現場實戰版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 版本控制 (V7.0) ---
-CURRENT_VERSION = 7.0
+# --- 2. 🛡️ 版本控制 (V8.0) ---
+CURRENT_VERSION = 8.0
 
-# 初始化 Session State
 if "data_version" not in st.session_state:
     st.session_state.clear()
     st.session_state.data_version = CURRENT_VERSION
@@ -39,15 +37,17 @@ st.markdown("""
     }
     .info-box { background-color: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 5px solid #6c757d; font-size: 0.9em; margin-bottom: 5px; }
     .nw-header { background-color: #e8f5e9; padding: 10px; border-radius: 5px; border: 1px solid #c8e6c9; margin-bottom: 10px; font-weight: bold; color: #2e7d32; }
+    .check-header { background-color: #fff3e0; padding: 10px; border-radius: 5px; border: 1px solid #ffe0b2; margin-bottom: 10px; font-weight: bold; color: #e65100; }
     div[data-testid="stExpander"] { margin-top: -5px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title(f"🏗️ 建案開工至放樣 SOP 控管系統 (Ver {CURRENT_VERSION})")
-st.caption("修復：狀態無法保存問題、優化解鎖邏輯")
+st.caption("新增：放樣勘驗現場稽核表、人員拍照規範、設施維護標準")
 
 # --- 3. 定義完整文件清單 (資料庫) ---
 def get_all_checklists():
+    # 1. 開工申報 (NW)
     list_start = [
         ("NW0100", "建築工程開工申報書", "起造/建築/營造/技師/工地主任簽章", False),
         ("NW0200", "起造人名冊", "各起造人用起造章", False),
@@ -70,6 +70,7 @@ def get_all_checklists():
         ("NW2900", "塔式起重機自主檢查表", "無則附切結書", False)
     ]
     
+    # 2. 施工計畫 (NW)
     list_plan = [
         ("NW0500", "建築執照", "掃描正本", False),
         ("NW1300", "施工計畫備查資料表", "建管處網站下載", False),
@@ -99,6 +100,7 @@ def get_all_checklists():
         ("NW9900", "其他文件", "建築線指示圖、複丈成果圖、鑽探報告", False)
     ]
 
+    # 3. 放樣勘驗 (NS) - 更新版
     list_ns = [
         ("NS0100", "建築工程勘驗申報書", "完整填註及用章", False),
         ("NS0200", "建築執照存根", "含變更設計", False),
@@ -108,16 +110,17 @@ def get_all_checklists():
         ("NS0700", "施工勘驗報告表", "承造人+技師", False),
         ("NS0800", "監造人現地勘驗檢查報告表", "", False),
         ("NS0900", "勘驗現場照片", "建物立面、告示牌、綠美化、四向鋼筋", False),
-        ("NS0901", "勘驗人員照片", "監造人、技師、工地主任合照", False),
+        ("NS0901", "勘驗人員照片", "監造人、技師、工地主任合照(手持白板)", False),
         ("NS1100", "鋼筋保證書", "", False),
         ("NS1200", "鋼筋無放射性污染證明書", "", False),
         ("NS1300", "鋼筋品質證明書", "含出廠證明", False),
         ("NS1400", "預拌混凝土品質保證書", "", False),
         ("NS1500", "氯離子含量檢測報告書", "含試驗數據", False),
-        ("NS2100", "放樣切結書", "", False),
+        ("NS2100", "放樣切結書", "起造/建築/承造/技師簽章", False),
         ("NS2200", "公會抽查紀錄表", "二樓版/十樓版", False),
+        ("NS2400", "紅火蟻清查紀錄表", "每月第1次申報檢附", False),
         ("NS2600", "專業工項施作情形表", "", False),
-        ("NS3300", "施工日誌", "有技術士應再填寫技術士簽章表", False)
+        ("NS3300", "施工日誌", "前一日日誌(技師/主任簽章)", False)
     ]
     return list_start, list_plan, list_ns
 
@@ -148,7 +151,7 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 
-# --- 5. 核心 SOP 資料庫產生函數 ---
+# --- 5. 核心 SOP 資料庫 (加入放樣前置文書) ---
 def get_fresh_sop_data():
     water_msg = f"⚠️ 數值 {pollution_value} (達4600門檻) 需辦理" if is_water_plan_needed else "✅ 免辦理"
     traffic_msg = "⚠️ 強制辦理 (面積>10000m²)" if is_traffic_plan_needed else ""
@@ -176,41 +179,48 @@ def get_fresh_sop_data():
             {"item": "導溝勘驗申報", "dept": "建管處", "method": "線上", "timing": "【施工前2日】", "docs": "1. 申請書\n2. 照片", "critical": "", "details": "", "demo_only": False, "done": False, "note": ""}
         ],
         "stage_4": [ 
-             {"item": "地界複丈/路心樁復原", "dept": "地政事務所", "method": "臨櫃", "timing": "【拆除後】", "docs": "1. 複丈申請書", "critical": "", "details": "", "demo_only": True, "done": False, "note": ""},
-            {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構施工前】", "docs": "⚠️ 確認 NS 勘驗文件備齊", "critical": "", "details": "需將測量成果、鋼筋保證書等掃描上傳。檔名 Ex: NS0100...pdf", "demo_only": False, "done": False, "note": ""}
+            {"item": "放樣前置-用水/電/汙水核備", "dept": "自來水/台電/衛工", "method": "紙本", "timing": "【放樣前】", "docs": "1. 核備公函影本", "critical": "需承造人用印", "details": "免辦理條件：5樓/5戶/2000m²以下。", "demo_only": False, "done": False, "note": ""},
+            {"item": "放樣前置-消防設備圖說", "dept": "消防局", "method": "紙本", "timing": "【放樣前】", "docs": "1. 核准公函影本", "critical": "需承造人用印", "details": "", "demo_only": False, "done": False, "note": ""},
+            {"item": "放樣前置-交通維持核准", "dept": "交通局", "method": "紙本", "timing": "【放樣前】", "docs": "1. 核准函", "critical": "", "details": "樓地板>10000m²者必備。", "demo_only": False, "done": False, "note": ""},
+            {"item": "地界複丈/路心樁復原", "dept": "地政事務所", "method": "臨櫃", "timing": "【拆除後】", "docs": "1. 複丈申請書", "critical": "", "details": "拆除後需重新確認地界。", "demo_only": True, "done": False, "note": ""},
+            {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構施工前】", "docs": "⚠️ 確認 NS 勘驗文件備齊", "critical": "⚠️ 現場不得先行施工", "details": "建管處網路核備後，需送建照正本及勘驗紙本至櫃台掛件。", "demo_only": False, "done": False, "note": ""}
         ]
     }
 
-# --- 6. 狀態合併邏輯 (解決資料重置問題的核心) ---
-# 取得最新的 SOP 資料（含最新的 critical 警語）
-fresh_sop = get_fresh_sop_data()
+# --- 6. 現場稽核項目 (New!) ---
+def get_site_audit_list():
+    return [
+        ("現場告示牌", "工程名稱、建照號碼、人員名單等", "人員拍照時不可遮擋資訊"),
+        ("施工圍籬 (甲種)", "高度2.4m以上 (臨安全走廊3m)", "底部需設防溢座"),
+        ("圍籬綠美化", "臨10m路需1/2面積綠化", "不得使用官方廣告"),
+        ("安全走廊", "臨人行道側須設置懸臂式", "需有照明"),
+        ("施工大門", "厚度1.2mm以上鐵門", "需標示臨時借用道路"),
+        ("警示燈/照明", "每2.25~6m設置", "轉角處必設"),
+        ("監視錄影系統", "土方車輛出入口", "需完整攝錄車牌"),
+        ("現況實測圖", "A1上色圖13份", "標示鄰房、樹、水溝、路燈"),
+        ("樁位/界點", "路中心樁、基地界點", "需有照片證明"),
+        ("騎樓公告", "張貼騎樓打通/封閉公告", "A3防水告示單"),
+        ("捷運/高鐵通報", "發函通知會測", "沿線工地必備")
+    ]
 
-# 如果 session_state 裡還沒有資料，直接使用 fresh_sop
+# --- 7. 狀態合併邏輯 ---
+fresh_sop = get_fresh_sop_data()
 if "sop_data" not in st.session_state:
     st.session_state.sop_data = fresh_sop
 else:
-    # 如果已經有資料，我們要將 "舊的打勾狀態(done)" 合併到 "新的警語(critical)" 中
     old_data = st.session_state.sop_data
-    
     for stage, items in fresh_sop.items():
-        # 確保 stage 存在於舊資料中
         if stage in old_data:
             for i, fresh_item in enumerate(items):
-                # 嘗試找到對應的舊項目 (透過 item 名稱匹配最安全)
-                # 這裡為了效能，假設順序不變，直接對應索引 i
                 if i < len(old_data[stage]):
                     old_item = old_data[stage][i]
-                    # 只有當名稱相同時才繼承狀態，避免錯亂
                     if old_item['item'] == fresh_item['item']:
                         fresh_item['done'] = old_item.get('done', False)
                         fresh_item['note'] = old_item.get('note', '')
-    
-    # 將合併後的資料存回 session_state
     st.session_state.sop_data = fresh_sop
 
 data = st.session_state.sop_data
 
-# 初始化 Checklist 狀態
 list_start, list_plan, list_ns = get_all_checklists()
 all_checklists_codes = [c[0] for c in list_start + list_plan + list_ns]
 
@@ -221,14 +231,19 @@ else:
         if code not in st.session_state.nw_status:
             st.session_state.nw_status[code] = False
 
-# --- 7. Callback 函數 ---
-def toggle_status(stage_key, index):
-    pass # 狀態已透過 checkbox 直接綁定更新
+# 現場稽核狀態初始化
+site_items = [item[0] for item in get_site_audit_list()]
+if "site_status" not in st.session_state:
+    st.session_state.site_status = {name: False for name in site_items}
 
+# --- 8. Callback ---
 def toggle_nw(code):
     st.session_state.nw_status[code] = not st.session_state.nw_status[code]
 
-# --- 8. 渲染函數 ---
+def toggle_site(name):
+    st.session_state.site_status[name] = not st.session_state.site_status[name]
+
+# --- 9. 渲染函數 ---
 def render_stage_detailed(stage_key, is_locked=False):
     stage_items = data[stage_key]
     if is_locked: st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
@@ -238,11 +253,10 @@ def render_stage_detailed(stage_key, is_locked=False):
         with st.container():
             col1, col2 = st.columns([0.5, 9.5])
             with col1:
-                # [關鍵修正] 直接綁定狀態，不透過 callback，避免異步問題
                 new_status = st.checkbox("", value=item['done'], key=f"chk_{stage_key}_{i}", disabled=is_locked)
                 if new_status != item['done']:
                     item['done'] = new_status
-                    st.rerun() # 強制刷新，觸發解鎖邏輯
+                    st.rerun()
 
             with col2:
                 method = item.get('method', '現場')
@@ -281,7 +295,28 @@ def render_checklist(checklist_data, title, tab_name):
                 st.markdown(f"<span style='{color_style}'>{code} {name}</span>", unsafe_allow_html=True)
             with c3: st.caption(f"🖊️ {note}")
 
-# --- 9. 主流程 (解鎖邏輯) ---
+def render_site_audit():
+    st.markdown('<div class="check-header">📸 現場勘驗前自我檢核表 (務必確認以免被退件)</div>', unsafe_allow_html=True)
+    audit_list = get_site_audit_list()
+    
+    for name, desc, note in audit_list:
+        c1, c2, c3 = st.columns([0.5, 4, 5.5])
+        is_checked = st.session_state.site_status.get(name, False)
+        
+        with c1:
+            new_val = st.checkbox("", value=is_checked, key=f"site_{name}")
+            if new_val != is_checked:
+                st.session_state.site_status[name] = new_val
+                st.rerun()
+        
+        with c2:
+            st.markdown(f"**{name}**" if not is_checked else f"<span style='color:#2E7D32;font-weight:bold;'>{name}</span>", unsafe_allow_html=True)
+            st.caption(desc)
+        with c3:
+            st.info(f"💡 {note}")
+        st.divider()
+
+# --- 10. 主流程 ---
 def is_stage_complete(stage_key):
     for item in data[stage_key]:
         if item.get("demo_only") and not is_demo_project: continue
@@ -323,11 +358,15 @@ with tabs[4]:
     st.subheader("📐 階段四：放樣勘驗 (含NS勘驗文件)")
     if not (s0_done and s1_done and s2_done): st.markdown('<div class="locked-stage">🔒 請先完成施工計畫</div>', unsafe_allow_html=True)
     else:
+        # 新增現場稽核區塊
+        with st.expander("📸 現場放樣勘驗自我稽核 (現場準備)", expanded=True):
+            render_site_audit()
+        
         render_checklist(list_ns, "NS 放樣勘驗文件準備檢查表", "survey")
         st.markdown("---")
         render_stage_detailed("stage_4", is_locked=False)
 
-# --- 10. Excel 下載 ---
+# --- 11. Excel 下載 ---
 st.write("---")
 buffer = io.BytesIO()
 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
