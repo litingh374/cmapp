@@ -1,18 +1,17 @@
 import streamlit as st
 import pandas as pd
-import io  # [重要修正] 補上這個庫，解決 Excel 下載錯誤
+import io
 from datetime import date
 
 # --- 1. 頁面設定 ---
 st.set_page_config(
-    page_title="建案行政SOP系統 (V9.0 實戰完整版)",
+    page_title="建案行政SOP系統 (V10.0 結構外審版)",
     page_icon="🏗️",
     layout="wide"
 )
 
-# --- 2. 🛡️ 版本控制 (V9.0) ---
-# 升級版本號，強制清洗瀏覽器舊緩存，解決所有報錯與卡死問題
-CURRENT_VERSION = 9.0
+# --- 2. 🛡️ 版本控制 (V10.0) ---
+CURRENT_VERSION = 10.0
 
 if "data_version" not in st.session_state:
     st.session_state.clear()
@@ -33,6 +32,8 @@ st.markdown("""
     .tag-online { background-color: #e3f2fd; color: #0d47a1; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #90caf9; }
     .tag-paper { background-color: #efebe9; color: #5d4037; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #bcaaa4; }
     .tag-demo { background-color: #ffcdd2; color: #b71c1c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ef9a9a; }
+    .tag-struct { background-color: #e1bee7; color: #4a148c; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; border: 1px solid #ce93d8; }
+    
     .critical-info {
         color: #d32f2f; font-size: 0.9em; font-weight: bold; margin-left: 25px; margin-bottom: 5px;
         background-color: #ffebee; padding: 2px 8px; border-radius: 4px; display: inline-block;
@@ -45,7 +46,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title(f"🏗️ 建案開工至放樣 SOP 控管系統 (Ver {CURRENT_VERSION})")
-st.caption("整合：NS放樣勘驗編碼、施工計畫A3圖說規定、現場稽核標準")
+st.caption("新增：結構外審判讀引擎、細部設計審查檢核、拆除計畫外審邏輯")
 
 # --- 3. 定義完整文件清單 (資料庫) ---
 def get_all_checklists():
@@ -72,7 +73,7 @@ def get_all_checklists():
         ("NW2900", "塔式起重機自主檢查表", "無則附切結書", False)
     ]
     
-    # 2. 施工計畫 (NW) - 整合您提供的詳細資料
+    # 2. 施工計畫 (NW)
     list_plan = [
         ("NW0500", "建築執照", "掃描正本", False),
         ("NW1300", "施工計畫備查資料表", "建管處網站下載", False),
@@ -88,14 +89,11 @@ def get_all_checklists():
         ("NW4000", "緊急應變計畫", "含緊急聯絡名冊", False),
         ("NW4200", "工程材料品質管理計畫", "併檢附結構材料強度圖說", False),
         ("NW4300", "運送憑證應辦事項及聯單管制", "", False),
-        ("NW4400", "空氣品質惡化防制措施", "", False),
-        ("NW4500", "專業工項施作情形表", "", False),
         ("NW4700", "鷹架/圍籬/大門大樣圖", "建築師/營造廠/技師用章", False),
         ("NW4800", "平面安全設施配置圖", "繪於建照核准圖", False),
         ("NW4900", "四向立面安全設施配置圖", "繪於建照核准圖(含鷹架/護網/帆布)", False),
         ("NW5000", "配筋圖(A3)", "需至建築師公會用印開工章", False),
         ("NW5100", "圍籬綠美化圖說", "含維護及回收計畫 (臨10M路需綠化)", False),
-        ("NW5200", "臨時借用道路說明書", "含告示牌/通知單", False),
         ("NW5300", "交通維持計畫核准函", "達10000m²者必備", False),
         ("NW5400", "施工計畫說明會審查函", "達外審標準者必備", False),
         ("NW5500", "塔式起重機審查核可函", "勞檢處/交通局核准", False),
@@ -106,17 +104,17 @@ def get_all_checklists():
         ("NW9900", "其他文件", "建築線指示圖、複丈成果圖、鑽探報告", False)
     ]
 
-    # 3. 放樣勘驗 (NS) - 整合您提供的最新資料
+    # 3. 放樣勘驗 (NS)
     list_ns = [
         ("NS0100", "建築工程勘驗申報書", "完整填註及用章", False),
         ("NS0200", "建築執照存根", "含變更設計", False),
         ("NS0300", "勘驗順序表", "確認目前進度", False),
-        ("NS0400", "必需勘驗部分申報表", "建築師簽章", False),
-        ("NS0600", "專任工程人員督察記錄表", "技師簽章", False),
+        ("NS0400", "必需勘驗部分申報表", "", False),
+        ("NS0600", "專任工程人員督察記錄表", "", False),
         ("NS0700", "施工勘驗報告表", "承造人+技師", False),
-        ("NS0800", "監造人現地勘驗檢查報告表", "建築師簽章", False),
-        ("NS0900", "勘驗現場照片", "立面、告示牌、綠美化、四向鋼筋", False),
-        ("NS0901", "勘驗人員照片", "監造/技師/主任手持白板合照", False),
+        ("NS0800", "監造人現地勘驗檢查報告表", "", False),
+        ("NS0900", "勘驗現場照片", "建物立面、告示牌、綠美化、四向鋼筋", False),
+        ("NS0901", "勘驗人員照片", "監造人、技師、工地主任合照(手持白板)", False),
         ("NS1100", "鋼筋保證書", "", False),
         ("NS1200", "鋼筋無放射性污染證明書", "", False),
         ("NS1300", "鋼筋品質證明書", "含出廠證明", False),
@@ -127,12 +125,11 @@ def get_all_checklists():
         ("NS2400", "紅火蟻清查紀錄表", "每月第1次申報檢附", False),
         ("NS2500", "剩餘資源備查函", "處理計畫/完成報告", False),
         ("NS2600", "專業工項施作情形表", "", False),
-        ("NS3000", "候選綠建築證書", "公有>5000萬", False),
         ("NS3300", "施工日誌", "前一日日誌(技師/主任簽章)", False)
     ]
     return list_start, list_plan, list_ns
 
-# --- 4. 現場稽核項目 (整合您提供的實務資料) ---
+# --- 4. 現場稽核項目 ---
 def get_site_audit_list():
     return [
         ("現場告示牌", "需含：工程名稱、建照號碼、設計/監造/承造人", "拍照時人員不可遮擋資訊"),
@@ -148,7 +145,7 @@ def get_site_audit_list():
         ("捷運/高鐵通報", "發函通知會測", "沿線工地必備，需取得初始值核備")
     ]
 
-# --- 5. 側邊欄：參數輸入 ---
+# --- 5. 側邊欄：參數輸入 (含結構判讀) ---
 with st.sidebar:
     st.header("⚙️ 專案參數設定")
     project_type = st.radio("案件類型", ["素地新建案", "拆除併建造執照案"])
@@ -156,56 +153,99 @@ with st.sidebar:
     
     st.divider()
     
-    st.subheader("📏 工程規模")
+    st.subheader("📏 工程與結構規模 (自動判讀外審)")
+    
+    # 基礎參數
     total_area = st.number_input("總樓地板面積 (m²)", value=0, step=100)
     base_area = st.number_input("基地/施工面積 (m²)", value=0, step=100)
     duration_month = st.number_input("預計工期 (月)", value=12, step=1)
     
-    excavation_depth = st.number_input("開挖深度 (m)", value=0.0, step=0.5)
-    building_height = st.number_input("建築高度 (m)", value=0.0, step=1.0)
+    # 結構參數
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        building_height = st.number_input("建築高度 (m)", value=0.0, step=1.0)
+        floors_above = st.number_input("地上層數", value=0, step=1)
+    with col_h2:
+        excavation_depth = st.number_input("開挖深度 (m)", value=0.0, step=0.5)
+        floors_below = st.number_input("地下層數", value=0, step=1)
+        
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        span_rc = st.number_input("RC最大跨距(m)", value=0.0, step=0.5)
+    with col_s2:
+        span_sc = st.number_input("鋼骨最大跨距(m)", value=0.0, step=0.5)
+        
+    is_geo_sensitive = st.checkbox("位於地質敏感區 (如士林蘭雅、基隆河新生地)", value=False)
+    is_slope_land = st.checkbox("位於山坡地 (開挖整地>3000m²)", value=False)
+    is_manual_struct_review = st.checkbox("建照注意事項明確列管「結構外審」", value=False)
+
     
-    # 計算邏輯
+    # --- 判讀邏輯核心 ---
+    # 1. 環保門檻
     pollution_value = base_area * duration_month
     is_water_plan_needed = pollution_value >= 4600
+    
+    # 2. 交通門檻
     is_traffic_plan_needed = total_area > 10000
-    is_external_review_needed = (excavation_depth > 12 or building_height > 50 or base_area > 3000)
+    
+    # 3. 結構外審/施工計畫外審 門檻 (高度50m, 15層, 深12m, 跨距12/35)
+    is_struct_review_needed = (
+        building_height > 50 or 
+        floors_above > 15 or 
+        excavation_depth > 12 or 
+        floors_below > 3 or 
+        span_rc > 12 or 
+        span_sc > 35 or
+        is_slope_land or
+        is_manual_struct_review or
+        (is_geo_sensitive and (excavation_depth > 7 or floors_below > 1))
+    )
+    
+    # 4. 拆除外審 (拆除且>10層)
+    is_demo_review_needed = is_demo_project and floors_above > 10
     
     st.divider()
     if st.button("🔄 強制重置 (資料清空)"):
         st.session_state.clear()
         st.rerun()
 
-# --- 6. 核心 SOP 資料庫 ---
+# --- 6. 核心 SOP 資料庫產生 ---
 def get_fresh_sop_data():
     water_msg = f"⚠️ 數值 {pollution_value} (達4600門檻) 需辦理" if is_water_plan_needed else "✅ 免辦理"
     traffic_msg = "⚠️ 強制辦理 (面積>10000m²)" if is_traffic_plan_needed else ""
-    external_msg = "⚠️ 需辦理施工計畫外審" if is_external_review_needed else ""
+    struct_msg = "⚠️ 符合外審條件 (高度/深度/跨距)：需辦理細部設計審查" if is_struct_review_needed else ""
+    demo_msg = "⚠️ 拆除規模>10層：需辦理拆除計畫外審" if is_demo_review_needed else ""
 
     return {
         "stage_0": [ 
-            {"item": "建築執照申請作業", "dept": "建築師/建管處", "method": "線上", "timing": "【掛號階段】", "docs": "1. 申請書電子檔\n2. 書圖文件", "critical": "", "details": "透過無紙化審查系統上傳。", "demo_only": False, "done": False, "note": ""},
-            {"item": "領取建造執照", "dept": "建管處", "method": "臨櫃", "timing": "【校對完成後】", "docs": "1. 規費收據", "critical": "", "details": "繳納規費後領取紙本執照。", "demo_only": False, "done": False, "note": ""}
+            {"item": "建築執照申請作業", "dept": "建築師/建管處", "method": "線上", "timing": "【掛號階段】", "docs": "1. 申請書電子檔\n2. 書圖文件", "critical": "", "details": "透過無紙化審查系統上傳。", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            {"item": "領取建造執照", "dept": "建管處", "method": "臨櫃", "timing": "【校對完成後】", "docs": "1. 規費收據", "critical": "", "details": "繳納規費後領取紙本執照。", "demo_only": False, "struct_only": False, "done": False, "note": ""}
         ],
         "stage_1": [ 
-            {"item": "空氣污染防制費申報", "dept": "環保局", "method": "線上", "timing": "【開工前】", "docs": "1. 合約書影本\n2. 建照影本", "critical": "⚠️ 首期申報：山坡地案需附詳細合約明細", "details": "**臺北市營建工程空污費網路申報系統**\n1. 註冊帳號\n2. 上傳文件\n3. 下載繳款書\n4. 繳款\n(面積>500m²需列管B8)", "demo_only": False, "done": False, "note": ""},
-            {"item": "建照科行政驗收抽查", "dept": "建管處", "method": "臨櫃", "timing": "【開工申報前】", "docs": "1. 抽查紀錄表", "critical": "⚠️ 關鍵門檻：缺失修正後，方得辦理開工", "details": "單一拆照或拆併建照案必辦。", "demo_only": True, "done": False, "note": ""},
-            {"item": "撤管防空避難設備", "dept": "警察分局", "method": "紙本", "timing": "【開工前】", "docs": "1. 函知公文", "critical": "", "details": "取得掛件收文戳章。", "demo_only": True, "done": False, "note": ""},
-            {"item": "開工前置-逕流廢水削減計畫", "dept": "環保局", "method": "線上", "timing": "【開工前】", "docs": "1. 削減計畫書", "critical": water_msg, "details": "門檻：面積 × 工期 >= 4600", "demo_only": False, "done": False, "note": ""},
-            {"item": "開工申報 (正式掛號)", "dept": "建管處", "method": "線上", "timing": "【建照後6個月內】", "docs": "⚠️ 確認 NW 開工文件備齊", "critical": "⚠️ 線上掛號後 1 日內需親送正本核對", "details": "需使用 HICOS 憑證元件。核對無誤以系統送出日為準。", "demo_only": False, "done": False, "note": ""}
+            {"item": "空氣污染防制費申報", "dept": "環保局", "method": "線上", "timing": "【開工前】", "docs": "1. 合約書影本\n2. 建照影本", "critical": "⚠️ 首期申報：山坡地案需附詳細合約明細", "details": "**臺北市營建工程空污費網路申報系統**\n1. 註冊帳號\n2. 上傳文件\n3. 下載繳款書\n4. 繳款\n(面積>500m²需列管B8)", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            {"item": "建照科行政驗收抽查", "dept": "建管處", "method": "臨櫃", "timing": "【開工申報前】", "docs": "1. 抽查紀錄表\n2. 缺失改善報告", "critical": "⚠️ 關鍵門檻：缺失修正後，方得辦理開工", "details": "單一拆照或拆併建照案必辦。", "demo_only": True, "struct_only": False, "done": False, "note": ""},
+            {"item": "撤管防空避難設備", "dept": "警察分局", "method": "紙本", "timing": "【開工前】", "docs": "1. 函知公文", "critical": "", "details": "取得掛件收文戳章。", "demo_only": True, "struct_only": False, "done": False, "note": ""},
+            {"item": "開工前置-逕流廢水削減計畫", "dept": "環保局", "method": "線上", "timing": "【開工前】", "docs": "1. 削減計畫書", "critical": water_msg, "details": "門檻：面積 × 工期 >= 4600", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            # [新增] 拆除計畫外審
+            {"item": "拆除計畫外審", "dept": "相關公會", "method": "會議", "timing": "【開工前】", "docs": "1. 拆除計畫書\n2. 審查核備函", "critical": demo_msg, "details": "地上10層以上建築物拆除必辦。", "demo_only": True, "struct_only": False, "done": False, "note": ""},
+            {"item": "開工申報 (正式掛號)", "dept": "建管處", "method": "線上", "timing": "【建照後6個月內】", "docs": "⚠️ 確認 NW 開工文件備齊", "critical": "⚠️ 線上掛號後 1 日內需親送正本核對", "details": "需使用 HICOS 憑證元件。核對無誤以系統送出日為準。", "demo_only": False, "struct_only": False, "done": False, "note": ""}
         ],
         "stage_2": [ 
-            {"item": "施工計畫說明會 (外審)", "dept": "相關公會", "method": "會議", "timing": "【計畫核定前】", "docs": "1. 施工計畫書\n2. 簡報", "critical": external_msg, "details": "深開挖(>12m)、高樓層(>50m)、地質敏感區需辦理。", "demo_only": False, "done": False, "note": ""},
-            {"item": "交通維持計畫", "dept": "交通局", "method": "紙本", "timing": "【施工計畫前】", "docs": "1. 交維計畫書", "critical": traffic_msg, "details": "樓地板面積>10000m²強制辦理。需配合施工大門、車行坡道。", "demo_only": False, "done": False, "note": ""},
-            {"item": "施工計畫書核備 (上傳)", "dept": "建管處", "method": "線上", "timing": "【放樣前】", "docs": "⚠️ 確認 NW 施工計畫文件備齊", "critical": "", "details": "**無紙化規定**：\n1. 掃描 A3(圖說)/A4 格式 PDF。\n2. 配筋圖需至公會用印。\n3. 圖說檔案編號 NW4700~NW5000。", "demo_only": False, "done": False, "note": ""},
-            {"item": "舊屋拆除與廢棄物結案", "dept": "環保局", "method": "線上", "timing": "【拆除後】", "docs": "1. 結案申報書", "critical": "⚠️ B5/B8 未結案，無法進行放樣", "details": "拆除完成後需解除列管。", "demo_only": True, "done": False, "note": ""}
+            # [新增] 結構外審專用項目
+            {"item": "結構外審-細部設計審查", "dept": "結構外審公會", "method": "會議", "timing": "【施工計畫/放樣前】", "docs": "1. 細部結構配筋圖\n2. 無需變更設計切結書\n3. 核備公函", "critical": struct_msg, "details": "需完成細部設計審查並取得建照科核備，方可進行施工計畫及放樣。", "demo_only": False, "struct_only": True, "done": False, "note": ""},
+            
+            {"item": "施工計畫說明會 (外審)", "dept": "相關公會", "method": "會議", "timing": "【計畫核定前】", "docs": "1. 施工計畫書\n2. 簡報", "critical": struct_msg, "details": "條件同結構外審 (深開挖、高樓層、大跨距等)。", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            {"item": "交通維持計畫", "dept": "交通局", "method": "紙本", "timing": "【施工計畫前】", "docs": "1. 交維計畫書", "critical": traffic_msg, "details": "樓地板面積>10000m²強制辦理。需配合施工大門、車行坡道。", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            {"item": "施工計畫書核備 (上傳)", "dept": "建管處", "method": "線上", "timing": "【放樣前】", "docs": "⚠️ 確認 NW 施工計畫文件備齊", "critical": "", "details": "**無紙化規定**：\n1. 掃描 A3/A4 格式 PDF。\n2. 配筋圖需至公會用印。\n3. 圖說檔案編號 NW4700~NW5000。", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            {"item": "舊屋拆除與廢棄物結案", "dept": "環保局", "method": "線上", "timing": "【拆除後】", "docs": "1. 結案申報書", "critical": "⚠️ B5/B8 未結案，無法進行放樣", "details": "拆除完成後需解除列管。", "demo_only": True, "struct_only": False, "done": False, "note": ""}
         ],
         "stage_3": [ 
-            {"item": "導溝勘驗申報", "dept": "建管處", "method": "線上", "timing": "【施工前2日】", "docs": "1. 申請書\n2. 照片", "critical": "", "details": "", "demo_only": False, "done": False, "note": ""}
+            {"item": "導溝勘驗申報", "dept": "建管處", "method": "線上", "timing": "【施工前2日】", "docs": "1. 申請書\n2. 照片", "critical": "", "details": "", "demo_only": False, "struct_only": False, "done": False, "note": ""}
         ],
         "stage_4": [ 
-            {"item": "放樣前置-用水/電/汙水核備", "dept": "自來水/台電/衛工", "method": "紙本", "timing": "【放樣前】", "docs": "1. 核備公函影本", "critical": "需承造人用印", "details": "免辦理條件：5樓/5戶/2000m²以下。", "demo_only": False, "done": False, "note": ""},
-            {"item": "地界複丈/路心樁復原", "dept": "地政事務所", "method": "臨櫃", "timing": "【拆除後】", "docs": "1. 複丈申請書", "critical": "", "details": "拆除後需重新確認地界。", "demo_only": True, "done": False, "note": ""},
-            {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構施工前】", "docs": "⚠️ 確認 NS 勘驗文件備齊", "critical": "⚠️ 現場不得先行施工", "details": "建管處網路核備後，需送建照正本及勘驗紙本至櫃台掛件。", "demo_only": False, "done": False, "note": ""}
+            {"item": "放樣前置-用水/電/汙水核備", "dept": "自來水/台電/衛工", "method": "紙本", "timing": "【放樣前】", "docs": "1. 核備公函影本", "critical": "需承造人用印", "details": "免辦理條件：5樓/5戶/2000m²以下。", "demo_only": False, "struct_only": False, "done": False, "note": ""},
+            {"item": "地界複丈/路心樁復原", "dept": "地政事務所", "method": "臨櫃", "timing": "【拆除後】", "docs": "1. 複丈申請書", "critical": "", "details": "拆除後需重新確認地界。", "demo_only": True, "struct_only": False, "done": False, "note": ""},
+            {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構施工前】", "docs": "⚠️ 確認 NS 勘驗文件備齊", "critical": "⚠️ 現場不得先行施工", "details": "建管處網路核備後，需送建照正本及勘驗紙本至櫃台掛件。", "demo_only": False, "struct_only": False, "done": False, "note": ""}
         ]
     }
 
@@ -242,24 +282,30 @@ site_items = [item[0] for item in get_site_audit_list()]
 if "site_status" not in st.session_state:
     st.session_state.site_status = {name: False for name in site_items}
 
-# --- 8. Callback (解決解鎖卡死的關鍵) ---
+# --- 8. Callback ---
 def toggle_nw(code):
     st.session_state.nw_status[code] = not st.session_state.nw_status[code]
 
 def toggle_site(name):
     st.session_state.site_status[name] = not st.session_state.site_status[name]
 
-# --- 9. 渲染函數 ---
+# --- 9. 渲染函數 (含結構外審過濾) ---
 def render_stage_detailed(stage_key, is_locked=False):
     stage_items = data[stage_key]
     if is_locked: st.markdown('<div class="locked-stage">🔒 請先完成上一階段</div>', unsafe_allow_html=True)
 
     for i, item in enumerate(stage_items):
+        # [智慧過濾]
         if item.get("demo_only") and not is_demo_project: continue
+        if item.get("demo_only") and item.get("critical") == "" and not is_demo_review_needed: continue # 過濾掉不需外審的拆除項目(如果有)
+        
+        # [結構外審過濾]
+        # 如果項目標記為 struct_only，但計算結果不需要外審，則隱藏
+        if item.get("struct_only") and not is_struct_review_needed: continue
+
         with st.container():
             col1, col2 = st.columns([0.5, 9.5])
             with col1:
-                # [關鍵] 點擊後立即存檔並刷新，解決解鎖延遲
                 new_status = st.checkbox("", value=item['done'], key=f"chk_{stage_key}_{i}", disabled=is_locked)
                 if new_status != item['done']:
                     item['done'] = new_status
@@ -268,9 +314,12 @@ def render_stage_detailed(stage_key, is_locked=False):
             with col2:
                 method = item.get('method', '現場')
                 method_tag = f'<span class="tag-online">🔵 線上</span>' if method == "線上" else f'<span class="tag-paper">🟤 {method}</span>'
-                demo_tag = '<span class="tag-demo">🏗️ 拆除專項</span>' if item.get("demo_only") else ""
                 
-                title_html = f"**{item['item']}** {method_tag} {demo_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
+                # 標籤顯示
+                demo_tag = '<span class="tag-demo">🏗️ 拆除</span>' if item.get("demo_only") else ""
+                struct_tag = '<span class="tag-struct">🏢 結構外審</span>' if item.get("struct_only") else ""
+                
+                title_html = f"**{item['item']}** {method_tag} {demo_tag} {struct_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
                 if item['done']: st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
                 else: st.markdown(title_html, unsafe_allow_html=True)
                 
@@ -327,6 +376,7 @@ def render_site_audit():
 def is_stage_complete(stage_key):
     for item in data[stage_key]:
         if item.get("demo_only") and not is_demo_project: continue
+        if item.get("struct_only") and not is_struct_review_needed: continue
         if not item['done']: return False
     return True
 
@@ -381,6 +431,7 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
     for k, v in data.items():
         for item in v:
             if item.get("demo_only") and not is_demo_project: continue
+            if item.get("struct_only") and not is_struct_review_needed: continue
             item_copy = item.copy()
             item_copy['階段代號'] = k
             all_rows.append(item_copy)
