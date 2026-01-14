@@ -10,10 +10,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS 優化 (綠色勾選 + 線上申辦標籤) ---
+# --- CSS 優化 ---
 st.markdown("""
 <style>
-    /* 勾選框優化：強制綠色 */
+    /* 勾選框強制綠色 */
     div[data-testid="stCheckbox"] label span[data-checked="true"] {
         background-color: #2E7D32 !important;
         border-color: #2E7D32 !important;
@@ -34,15 +34,19 @@ st.markdown("""
         background-color: #f8f9fa; padding: 10px; border-radius: 5px; 
         border-left: 5px solid #6c757d; font-size: 0.9em; margin-bottom: 5px;
     }
+    /* 調整 expander 的邊距，讓它跟標題貼近一點 */
+    div[data-testid="stExpander"] {
+        margin-top: -10px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🏗️ 建案開工至放樣 SOP 控管系統 (含無紙化流程)")
 
-# --- 2. 核心資料庫 (擴充版：包含 Stage 0 的詳細流程) ---
+# --- 2. 核心資料庫 ---
 def get_initial_sop():
     return {
-        "stage_0": [ # 建照領取階段 (依據您的需求大幅擴充)
+        "stage_0": [ 
             {
                 "item": "土地與建物權利證明確認", 
                 "dept": "業主/地政", 
@@ -107,41 +111,38 @@ def get_initial_sop():
                 "done": False, "note": ""
             },
         ],
-        "stage_1": [ # 開工前置與申報
+        "stage_1": [ 
             {"item": "空氣污染防制費申報", "dept": "環保局", "method": "線上", "timing": "【開工前】", "docs": "1. 空汙費申報書 (線上填報)", "details": "至「營建工程空汙費網路申報系統」辦理。", "done": False, "note": ""},
             {"item": "營建廢棄物處理計畫", "dept": "環保局", "method": "線上", "timing": "【開工前】", "docs": "1. 廢棄物計畫書\n2. 土資場同意書", "details": "需至「廢棄物申報及管理資訊系統」解除列管。", "done": False, "note": ""},
             {"item": "現況調查 (鄰房鑑定)", "dept": "技師公會", "method": "紙本", "timing": "【拆除/開工前】", "docs": "1. 鑑定申請書", "details": "務必於動工前完成外業。", "done": False, "note": ""},
             {"item": "建管開工申報", "dept": "建管處 (施工科)", "method": "線上", "timing": "【建照後6個月內】", "docs": "1. 開工申請書\n2. 證書\n3. 保險單", "details": "目前台北/新北皆已推動「免紙本開工」，請至 E 辦網上傳文件。", "done": False, "note": ""}
         ],
-        "stage_2": [ # 施工計畫
+        "stage_2": [ 
             {"item": "施工計畫書審查", "dept": "建管處", "method": "線上", "timing": "【放樣前】", "docs": "1. 施工計畫書 PDF", "details": "特殊結構需外審。一般案件可線上上傳核備。", "done": False, "note": ""},
             {"item": "職業安全衛生計畫", "dept": "勞檢處", "method": "線上", "timing": "【開工前】", "docs": "1. 安衛計畫", "details": "危評案件需至職安署網站登錄。", "done": False, "note": ""}
         ],
-        "stage_3": [ # 導溝與放樣
+        "stage_3": [ 
             {"item": "導溝勘驗申報", "dept": "建管處", "method": "線上", "timing": "【計畫核定後】", "docs": "1. 勘驗申請書\n2. 照片", "details": "透過 APP 或網站申報勘驗。", "done": False, "note": ""},
             {"item": "放樣勘驗申報", "dept": "建管處", "method": "線上", "timing": "【結構前】", "docs": "1. 測量報告", "details": "需技師電子簽證。", "done": False, "note": ""}
         ],
-        "stage_4": [ # 現場準備
+        "stage_4": [ 
              {"item": "基地鑑界 (複丈)", "dept": "地政事務所", "method": "臨櫃", "timing": "【放樣前】", "docs": "1. 複丈申請書", "details": "確認界址點。", "done": False, "note": ""},
              {"item": "施工圍籬架設", "dept": "工地", "method": "現場", "timing": "【開工時】", "docs": "1. 綠美化照片", "details": "需符合圍籬美化規範。", "done": False, "note": ""}
         ]
     }
 
-# --- 3. 🛡️ 自動修復機制 (防止報錯) ---
-# 邏輯：如果 session_state 裡有舊資料 (stage_0 只有 1 筆)，強制更新為新版 (7 筆)
+# --- 3. 自動修復 (版本防呆) ---
 if "sop_data" in st.session_state:
     if len(st.session_state.sop_data.get("stage_0", [])) < 2:
-        st.warning("⚠️ 系統偵測到資料版本過舊，正在為您更新為「無紙化流程」...")
         st.session_state.sop_data = get_initial_sop()
-        st.rerun() # 立即重新整理，防止後續程式碼報錯
+        st.rerun()
 
-# 初始化
 if "sop_data" not in st.session_state:
     st.session_state.sop_data = get_initial_sop()
 
 data = st.session_state.sop_data
 
-# --- 4. 狀態切換 Callback ---
+# --- 4. 狀態 Callback ---
 def toggle_status(stage_key, index):
     current_status = st.session_state.sop_data[stage_key][index]['done']
     st.session_state.sop_data[stage_key][index]['done'] = not current_status
@@ -153,11 +154,8 @@ with st.sidebar:
     
     st.divider()
     
-    # 計算建照領取進度
     s0_total = len(data['stage_0'])
     s0_done = sum(1 for item in data['stage_0'] if item['done'])
-    
-    # 判斷是否解鎖 (所有 stage_0 完成)
     permit_unlocked = (s0_done == s0_total)
     
     if permit_unlocked:
@@ -173,7 +171,7 @@ with st.sidebar:
         st.session_state.sop_data = get_initial_sop()
         st.rerun()
 
-# --- 6. 渲染函數 (含線上標籤) ---
+# --- 6. 渲染函數 (位置互換版) ---
 def render_stage_detailed(stage_key, is_locked=False):
     stage_items = data[stage_key]
     
@@ -184,7 +182,7 @@ def render_stage_detailed(stage_key, is_locked=False):
         with st.container():
             col1, col2 = st.columns([0.5, 9.5])
             
-            # Checkbox
+            # 1. 勾選框
             with col1:
                 st.checkbox(
                     "", 
@@ -195,13 +193,11 @@ def render_stage_detailed(stage_key, is_locked=False):
                     disabled=is_locked
                 )
             
-            # 內容顯示
+            # 2. 內容顯示
             with col2:
-                # 取得申辦方式 (安全讀取，防止無此欄位時報錯)
+                # 準備標籤
                 method = item.get('method', '現場')
                 method_tag = ""
-                
-                # 設定標籤顏色
                 if method == "線上":
                     method_tag = '<span class="tag-online">🔵 線上申辦</span>'
                 elif method in ["紙本", "臨櫃"]:
@@ -209,30 +205,32 @@ def render_stage_detailed(stage_key, is_locked=False):
                 else:
                     method_tag = f'<span class="tag-paper">{method}</span>'
 
-                # 標題 HTML
+                # 準備標題 HTML
                 title_html = f"**{item['item']}** {method_tag} <span style='color:#666; font-size:0.9em'>(🏢 {item['dept']})</span>"
                 
-                # 詳細資訊區
-                with st.expander("詳細資訊", expanded=False):
-                    st.markdown(title_html, unsafe_allow_html=True) 
+                # [關鍵修改] 1. 先顯示名稱 (在詳細資訊按鈕的上面)
+                if item['done']:
+                    # 已完成：顯示綠色標題
+                    st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
+                else:
+                    # 未完成：顯示一般標題 (含標籤)
+                    st.markdown(title_html, unsafe_allow_html=True)
+
+                # [關鍵修改] 2. 詳細資訊放在名稱的「下面」
+                with st.expander("🔽 詳細指引與備註", expanded=False):
+                    # 顯示詳細內容
                     st.markdown(f"**🕒 時機：** {item['timing']}")
                     st.markdown(f"**📄 應備文件：**\n{item['docs']}")
                     if item['details']:
                         st.markdown(f"<div class='info-box'>💡 <b>作業指引：</b><br>{item['details']}</div>", unsafe_allow_html=True)
                     
-                    # 備註
-                    new_note = st.text_input("備註", value=item['note'], key=f"note_{stage_key}_{i}")
+                    # 備註輸入框
+                    new_note = st.text_input("備註", value=item['note'], key=f"note_{stage_key}_{i}", placeholder="輸入文號或筆記...")
                     st.session_state.sop_data[stage_key][i]['note'] = new_note
-
-                # 外部標題 (未完成顯示黑色，完成顯示綠色)
-                if not item['done']:
-                    st.markdown(title_html, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<span style='color:#2E7D32; font-weight:bold;'>✅ {item['item']}</span>", unsafe_allow_html=True)
 
         st.divider()
 
-# --- 7. 主流程分頁 ---
+# --- 7. 主流程 ---
 
 # 進度計算
 current = 0
@@ -279,9 +277,7 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             item_copy['階段代號'] = k
             all_rows.append(item_copy)
     df_export = pd.DataFrame(all_rows)
-    # 使用 .get 避免報錯
     df_export['申辦方式'] = df_export.apply(lambda x: x.get('method', '現場'), axis=1)
-    
     df_export = df_export[["階段代號", "item", "申辦方式", "dept", "timing", "docs", "details", "done", "note"]]
     df_export.columns = ["階段", "項目", "申辦方式", "單位", "時限", "文件", "指引", "完成", "備註"]
     df_export.to_excel(writer, index=False, sheet_name='SOP詳表')
@@ -289,6 +285,6 @@ with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
 st.download_button(
     label="📥 下載 Excel 進度表",
     data=buffer.getvalue(),
-    file_name=f"SOP_Paperless_{date.today()}.xlsx",
+    file_name=f"SOP_Final_{date.today()}.xlsx",
     mime="application/vnd.ms-excel"
 )
